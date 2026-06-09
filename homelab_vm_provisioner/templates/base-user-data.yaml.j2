@@ -1,0 +1,45 @@
+#cloud-config
+
+hostname: {{ vm_name }}
+manage_etc_hosts: true
+
+users:
+  - name: {{ provider_user }}
+    groups: users, sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - {{ provider_public_key }}
+
+  - name: {{ vm_user }}
+    groups: users
+    shell: /bin/bash
+    sudo: {{ vm_sudo }}
+    ssh_authorized_keys:
+      - {{ vm_public_key }}
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - firewalld
+  - curl
+  - wget
+  - nano
+{% for package in packages %}
+  - {{ package }}
+{% endfor %}
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+      AllowUsers {{ provider_user }} {{ vm_user }}
+
+runcmd:
+  - systemctl enable --now firewalld
+  - firewall-cmd --permanent --add-service=ssh
+  - firewall-cmd --reload
+  - systemctl restart ssh

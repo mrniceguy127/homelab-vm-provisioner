@@ -1,0 +1,12 @@
+:root {
+    color-scheme: dark;
+}
+
+body {
+    color-scheme: dark;
+}
+
+body[data-theme="light"],
+body[data-theme="dark"] {
+    color-scheme: dark;
+}

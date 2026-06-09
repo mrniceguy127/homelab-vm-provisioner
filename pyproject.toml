@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "homelab-vm-provisioner"
+version = "0.1.0"
+description = "Provision and manage libvirt VMs with cloud-init and YAML configs."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "Jinja2>=3.1",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "furo>=2024.8.6",
+    "ruff>=0.15.0",
+    "Sphinx>=8.1.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["homelab_vm_provisioner*"]
+
+[tool.setuptools.package-data]
+homelab_vm_provisioner = ["templates/*.j2"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+extend-exclude = [
+    ".build",
+    "keys",
+    "provider-keys",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["homelab_vm_provisioner"]

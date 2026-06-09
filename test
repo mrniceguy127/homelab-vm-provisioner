@@ -9,4 +9,4 @@ else
     PYTHON_BIN="${PYTHON_BIN:-python3}"
 fi
 
-exec "$PYTHON_BIN" -m homelab_vm_provisioner "$@"
+exec "$PYTHON_BIN" -m unittest discover -s "$SCRIPT_DIR/tests"

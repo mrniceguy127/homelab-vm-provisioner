@@ -10,6 +10,12 @@ __pycache__/
 .venv/
 venv/
 .python-version
+*.egg-info/
+build/
+dist/
+pip-wheel-metadata/
 
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+docs/_build/

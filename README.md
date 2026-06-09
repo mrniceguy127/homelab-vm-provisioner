@@ -21,7 +21,12 @@ A lightweight KVM/libvirt provisioning tool for creating and managing virtual ma
 
 Run these commands on the libvirt host.
 
-1. Install the dependencies for your distro from the `Installation` section below.
+1. Run setup:
+
+```bash
+./setup
+```
+
 2. Create a user SSH key if you do not already have one:
 
 ```bash
@@ -60,34 +65,51 @@ ssh myuser@HOST_IP -p 2222
 
 ```text
 homelab-vm/
+├── setup
 ├── vmctl
 ├── vmssh-admin
-├── vmctl.py
+├── test
+├── lint
+├── pyproject.toml
+├── homelab_vm_provisioner/
+│   ├── __main__.py
+│   ├── cli.py
+│   ├── config.py
+│   ├── constants.py
+│   ├── firewall.py
+│   ├── network.py
+│   ├── provision.py
+│   ├── system.py
+│   └── templates/
+│       ├── base-user-data.yaml.j2
+│       └── meta-data.yaml.j2
+│
+├── docs/
+│   ├── conf.py
+│   ├── index.rst
+│   ├── getting-started.rst
+│   ├── architecture.rst
+│   └── api/
+│       └── *.rst
+│
 ├── tests/
-│   └── test_vmctl.py
+│   ├── test_cli.py
+│   ├── test_config.py
+│   ├── test_firewall.py
+│   ├── test_network.py
+│   └── test_provision.py
 │
 ├── configs/
-│   ├── devbox.yaml
-│   ├── web-service.yaml
-│   └── isolated-node.yaml
-│
-├── templates/
-│   ├── base-user-data.yaml.j2
-│   └── meta-data.yaml.j2
+│   ├── template.yaml.example
+│   └── *.yaml
 │
 ├── keys/
-│   ├── matt.pub
-│   └── deploy.pub
+│   └── *.pub
 │
 ├── provider-keys/
-│   ├── devbox_provider_ed25519
-│   ├── devbox_provider_ed25519.pub
 │   └── ...
 │
 ├── .build/
-│   ├── devbox/
-│   │   ├── user-data
-│   │   └── meta-data
 │   └── ...
 │
 └── README.md
@@ -99,10 +121,14 @@ homelab-vm/
 |--------|--------|
 | vmctl | CLI launcher |
 | vmssh-admin | Admin SSH launcher |
-| vmctl.py | Main provisioning application |
+| lint | Ruff lint runner |
+| setup | Project setup script |
+| test | Unit test runner |
+| pyproject.toml | Project metadata and tool configuration |
+| homelab_vm_provisioner | Main Python package |
+| docs | Sphinx documentation source |
 | tests | Unit tests |
 | configs | VM definitions |
-| templates | Cloud-init templates |
 | keys | User public keys |
 | provider-keys | Generated administrator keypairs |
 | .build | Generated cloud-init artifacts |
@@ -112,101 +138,19 @@ homelab-vm/
 
 # Installation
 
-## Debian / Ubuntu
-
 ```bash
-sudo apt update
-
-sudo apt install -y \
-    libvirt-daemon-system \
-    virtinst \
-    qemu-utils \
-    cloud-image-utils \
-    firewalld \
-    wget \
-    openssh-client \
-    python3-yaml \
-    python3-jinja2
+./setup
 ```
 
-Enable services:
+After that, use `./vmctl` and `./vmssh-admin` directly.
+
+Python-only setup:
 
 ```bash
-sudo systemctl enable --now libvirtd
-sudo systemctl enable --now firewalld
+./setup --skip-system-packages
 ```
 
-## Fedora
-
-```bash
-sudo dnf install -y \
-    qemu-kvm \
-    libvirt \
-    virt-install \
-    qemu-img \
-    cloud-utils \
-    firewalld \
-    wget \
-    openssh-clients \
-    python3-PyYAML \
-    python3-jinja2
-```
-
-Enable services:
-
-```bash
-sudo systemctl enable --now libvirtd
-sudo systemctl enable --now firewalld
-```
-
-## RHEL / Rocky / AlmaLinux
-
-`cloud-utils` is in EPEL on some releases.
-
-```bash
-sudo dnf install -y epel-release
-
-sudo dnf install -y \
-    qemu-kvm \
-    libvirt \
-    virt-install \
-    qemu-img \
-    cloud-utils \
-    firewalld \
-    wget \
-    openssh-clients \
-    python3-PyYAML \
-    python3-jinja2
-```
-
-Enable services:
-
-```bash
-sudo systemctl enable --now libvirtd
-sudo systemctl enable --now firewalld
-```
-
-## Arch Linux
-
-```bash
-sudo pacman -Syu --needed \
-    qemu-full \
-    libvirt \
-    virt-install \
-    cloud-image-utils \
-    firewalld \
-    wget \
-    openssh \
-    python-pyyaml \
-    python-jinja
-```
-
-Enable services:
-
-```bash
-sudo systemctl enable --now libvirtd.service
-sudo systemctl enable --now firewalld.service
-```
+Supported distros: Debian/Ubuntu, Fedora, RHEL/Rocky/AlmaLinux, Arch Linux.
 
 ---
 
@@ -244,10 +188,46 @@ Run it on the libvirt host. The helper uses the generated key in `provider-keys/
 ./vmssh-admin devbox --ip 192.168.1.50
 ```
 
+---
+
+# Development
+
+Install dev tools:
+
+```bash
+./setup --dev
+```
+
+## Build docs
+
+```bash
+make -C docs html
+```
+
+HTML output:
+
+```text
+docs/_build/html/
+```
+
 ## Run unit tests
 
 ```bash
-python3 -m unittest discover -s tests
+./test
+```
+
+## Run linting
+
+Run it with the repo helper:
+
+```bash
+./lint
+```
+
+Or directly:
+
+```bash
+.venv/bin/python -m ruff check homelab_vm_provisioner tests
 ```
 
 ---

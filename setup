@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="${VENV_DIR:-$SCRIPT_DIR/.venv}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+INSTALL_SYSTEM_PACKAGES=1
+INSTALL_DEV_DEPS=0
+
+usage() {
+    cat <<EOF
+Usage: ./setup [options]
+
+Options:
+  --skip-system-packages  Skip OS package installation
+  --dev                   Install developer dependencies
+  --python <binary>       Python interpreter to use
+  --venv <path>           Virtualenv path
+  --help                  Show this help
+EOF
+}
+
+log() {
+    printf '==> %s\n' "$*"
+}
+
+run_sudo() {
+    if [[ "${EUID}" -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+require_cmd() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        printf 'Missing command: %s\n' "$1" >&2
+        exit 1
+    fi
+}
+
+install_system_packages() {
+    if [[ ! -r /etc/os-release ]]; then
+        printf 'Unsupported distro: missing /etc/os-release\n' >&2
+        exit 1
+    fi
+
+    # shellcheck disable=SC1091
+    source /etc/os-release
+
+    case "${ID}" in
+        ubuntu|debian)
+            run_sudo apt update
+            run_sudo apt install -y \
+                libvirt-daemon-system \
+                virtinst \
+                qemu-utils \
+                cloud-image-utils \
+                firewalld \
+                wget \
+                openssh-client \
+                python3 \
+                python3-pip \
+                python3-venv
+            ;;
+        fedora)
+            run_sudo dnf install -y \
+                qemu-kvm \
+                libvirt \
+                virt-install \
+                qemu-img \
+                cloud-utils \
+                firewalld \
+                wget \
+                openssh-clients \
+                python3 \
+                python3-pip
+            ;;
+        rhel|rocky|almalinux)
+            run_sudo dnf install -y epel-release
+            run_sudo dnf install -y \
+                qemu-kvm \
+                libvirt \
+                virt-install \
+                qemu-img \
+                cloud-utils \
+                firewalld \
+                wget \
+                openssh-clients \
+                python3 \
+                python3-pip
+            ;;
+        arch)
+            run_sudo pacman -Syu --needed \
+                qemu-full \
+                libvirt \
+                virt-install \
+                cloud-image-utils \
+                firewalld \
+                wget \
+                openssh \
+                python \
+                python-pip
+            ;;
+        *)
+            printf 'Unsupported distro: %s\n' "${ID}" >&2
+            exit 1
+            ;;
+    esac
+
+    if command -v systemctl >/dev/null 2>&1; then
+        run_sudo systemctl enable --now libvirtd
+        run_sudo systemctl enable --now firewalld
+    fi
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --skip-system-packages)
+            INSTALL_SYSTEM_PACKAGES=0
+            shift
+            ;;
+        --dev)
+            INSTALL_DEV_DEPS=1
+            shift
+            ;;
+        --python)
+            if [[ $# -lt 2 ]]; then
+                printf 'Missing value for --python\n' >&2
+                exit 1
+            fi
+            PYTHON_BIN="$2"
+            shift 2
+            ;;
+        --venv)
+            if [[ $# -lt 2 ]]; then
+                printf 'Missing value for --venv\n' >&2
+                exit 1
+            fi
+            VENV_DIR="$2"
+            shift 2
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        *)
+            printf 'Unknown option: %s\n\n' "$1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ "$INSTALL_SYSTEM_PACKAGES" -eq 1 ]]; then
+    if [[ "${EUID}" -ne 0 ]]; then
+        require_cmd sudo
+    fi
+    log "Installing system packages"
+    install_system_packages
+fi
+
+require_cmd "$PYTHON_BIN"
+
+log "Creating virtual environment"
+"$PYTHON_BIN" -m venv "$VENV_DIR"
+
+log "Installing Python dependencies"
+"$VENV_DIR/bin/python" -m pip install --upgrade pip
+
+PACKAGE_SPEC="$SCRIPT_DIR"
+if [[ "$INSTALL_DEV_DEPS" -eq 1 ]]; then
+    PACKAGE_SPEC="${SCRIPT_DIR}[dev]"
+fi
+
+"$VENV_DIR/bin/python" -m pip install -e "$PACKAGE_SPEC"
+
+log "Setup complete"
+printf 'Run ./vmctl, ./vmssh-admin, and ./test without activating the venv.\n'
+if [[ "$INSTALL_DEV_DEPS" -eq 1 ]]; then
+    printf 'Run ./lint for linting.\n'
+fi
