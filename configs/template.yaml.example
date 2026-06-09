@@ -1,0 +1,39 @@
+# Copy this file to configs/<your-vm>.yaml and adjust the values.
+
+vm:
+  name: my-vm
+  user: myuser
+  ssh_key_file: ./keys/myuser.pub
+  ram_mb: 4096
+  vcpus: 2
+  disk_gb: 40
+  allow_sudo: false
+  trust: untrusted
+  template: base
+
+network:
+  mode: nat-auto
+
+  # For bridge mode, replace the block above with:
+  # mode: bridge
+  # bridge_name: br0
+
+  # For a custom NAT subnet, replace the block above with:
+  # mode: nat-custom
+  # name: my-vm-net
+  # zone: my-vm-zone
+  # subnet_prefix: 192.168.240
+
+packages:
+  - htop
+  - tmux
+
+ports:
+  - host: 2222
+    guest: 22
+    proto: tcp
+
+  # Example web port forward:
+  # - host: 8080
+  #   guest: 80
+  #   proto: tcp

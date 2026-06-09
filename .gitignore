@@ -1,0 +1,15 @@
+.build/
+provider-keys/
+keys/
+configs/*.yaml
+!configs/*.yaml.example
+
+__pycache__/
+*.py[cod]
+
+.venv/
+venv/
+.python-version
+
+.pytest_cache/
+.mypy_cache/
