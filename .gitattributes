@@ -1,0 +1,4 @@
+vmctl text eol=lf
+vmssh-admin text eol=lf
+*.sh text eol=lf
+*.py text eol=lf

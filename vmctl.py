@@ -80,6 +80,29 @@ def load_config(path):
         return yaml.safe_load(f)
 
 
+def resolve_config_path(config_path):
+    raw_path = Path(config_path).expanduser()
+
+    candidates = [raw_path]
+
+    if not raw_path.suffix:
+        candidates.append(raw_path.with_suffix(".yaml"))
+        candidates.append(raw_path.with_suffix(".yml"))
+
+    if raw_path.parts and raw_path.parts[0] == "config":
+        alt_path = Path("configs", *raw_path.parts[1:])
+        candidates.append(alt_path)
+        if not alt_path.suffix:
+            candidates.append(alt_path.with_suffix(".yaml"))
+            candidates.append(alt_path.with_suffix(".yml"))
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    raise FileNotFoundError(f"Missing config file: {config_path}")
+
+
 def random_mac():
     return "52:54:00:%02x:%02x:%02x" % (
         random.randint(0, 255),
@@ -412,7 +435,7 @@ def apply_firewalld_nat_policy(network, trust, ports):
 def create(config_path):
     require_tools()
 
-    config = load_config(config_path)
+    config = load_config(resolve_config_path(config_path))
 
     vm = config["vm"]
     net_cfg = config.get("network", {})
