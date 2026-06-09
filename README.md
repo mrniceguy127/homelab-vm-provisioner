@@ -66,7 +66,7 @@ ssh myuser@HOST_IP -p 2222
 # Project Structure
 
 ```text
-homelab-vm/
+ROOT
 ├── setup
 ├── test
 ├── vmctl
