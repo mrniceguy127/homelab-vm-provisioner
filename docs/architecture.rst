@@ -44,4 +44,5 @@ Configuration
 - ``vmctl.yaml`` also sets the default guest image URL, cached filename, and libvirt OS variant.
 - ``paths.vm_data_dir`` lets each VM config override its local artifact directory.
 - ``image`` settings in a VM config override the global guest image settings.
+- The default ``image.os_variant`` is ``generic`` to avoid host-specific libosinfo failures.
 - Relative ``paths.vm_data_dir`` values resolve from the project root.

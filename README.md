@@ -208,7 +208,7 @@ Python-only setup:
 
 Supported host distros: Debian/Ubuntu, Fedora, RHEL/Rocky/AlmaLinux, Arch Linux.
 
-Default guest image: Debian 12 cloud image. You can override the guest image URL, cached filename, and libvirt `os_variant` globally or per VM.
+Default guest image: Debian 12 cloud image. The default libvirt `os_variant` is `generic` for wider host compatibility. You can override the guest image URL, cached filename, and `os_variant` globally or per VM.
 
 ---
 
@@ -270,7 +270,7 @@ paths:
 image:
   name: debian-12-generic-amd64.qcow2
   url: https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2
-  os_variant: debian12
+  os_variant: generic
 ```
 
 These defaults are used for:
@@ -417,7 +417,7 @@ vm:
 
 | Field | Required | Type | Default | Description |
 |----------|----------|----------|----------|----------|
-| name | Yes | string | N/A | VM name |
+| name | Yes | string | N/A | VM name. Keep it at 12 characters or fewer |
 | user | Yes | string | N/A | User account created inside VM |
 | ssh_key_file | No | string | None | Tenant public key. Bare filenames resolve under `vm/keys/users/` by default |
 | ram_mb | Yes | integer | N/A | Memory allocation |
@@ -433,6 +433,10 @@ vm:
 |----------|----------|
 | trusted | Full network access |
 | untrusted | Private networks blocked |
+
+Notes:
+
+- `vm.name` is limited to 12 characters so the default firewalld zone name `<vm>-zone` stays within firewalld's 17-character limit.
 
 ## paths Section
 
@@ -471,7 +475,7 @@ image:
 | Field | Required | Type | Default | Description |
 |----------|----------|----------|----------|----------|
 | url | No | string | Debian 12 cloud image URL from `vmctl.yaml` | Download URL for the guest cloud image |
-| os_variant | No | string | `debian12` | Libvirt OS variant passed to `virt-install` |
+| os_variant | No | string | `generic` | Libvirt OS variant passed to `virt-install` |
 | name | No | string | Derived from `url` when overridden, otherwise from `vmctl.yaml` | Local cached filename under the image directory |
 
 Notes:
@@ -479,6 +483,8 @@ Notes:
 - Global image defaults live in `vmctl.yaml` under `image:`.
 - Per-VM `image:` settings override the global image settings.
 - If you override `url` and omit `name`, the cached filename is derived from the URL.
+- `generic` is the default because some hosts do not recognize newer distro-specific IDs like `debian12`.
+- Use `virt-install --osinfo list` on the host to discover supported distro-specific `os_variant` values.
 
 ---
 

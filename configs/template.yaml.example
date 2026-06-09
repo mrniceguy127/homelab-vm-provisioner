@@ -1,6 +1,8 @@
 # Copy this file to configs/<your-vm>.yaml and adjust the values.
 
 vm:
+  # Keep the VM name at 12 characters or fewer so the default firewalld
+  # zone name (<vm>-zone) stays within firewalld's 17-character limit.
   name: my-vm
   user: myuser
   # Optional but recommended when the tenant public key is already available.

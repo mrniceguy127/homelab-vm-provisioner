@@ -212,6 +212,89 @@ class ImageAndDiskTests(unittest.TestCase):
 
 
 class LibvirtProvisionTests(unittest.TestCase):
+    def test_default_nat_bridge_name_is_stable_and_short(self):
+        bridge_name = provision.default_nat_bridge_name("grant-minecraft")
+        self.assertEqual(bridge_name, provision.default_nat_bridge_name("grant-minecraft"))
+        self.assertTrue(bridge_name.startswith("virbr-"))
+        self.assertLessEqual(len(bridge_name), 15)
+
+    def test_legacy_nat_bridge_name_uses_truncated_vm_name(self):
+        self.assertEqual(provision.legacy_nat_bridge_name("grant-minecraft"), "virbr-grant-")
+
+    def test_bridge_interface_exists_reflects_subprocess_status(self):
+        with patch.object(
+            provision.subprocess,
+            "run",
+            return_value=type("Result", (), {"returncode": 0})(),
+        ):
+            self.assertTrue(provision.bridge_interface_exists("virbr-demo"))
+
+        with patch.object(
+            provision.subprocess,
+            "run",
+            return_value=type("Result", (), {"returncode": 1})(),
+        ):
+            self.assertFalse(provision.bridge_interface_exists("virbr-demo"))
+
+    def test_bridge_interface_exists_returns_false_when_ip_is_missing(self):
+        with patch.object(provision.subprocess, "run", side_effect=FileNotFoundError):
+            self.assertFalse(provision.bridge_interface_exists("virbr-demo"))
+
+    def test_cleanup_bridge_interface_uses_ip_link_delete(self):
+        with patch.object(provision, "run") as run_mock:
+            provision.cleanup_bridge_interface("virbr-demo")
+
+        run_mock.assert_called_once_with(
+            ["ip", "link", "delete", "virbr-demo", "type", "bridge"],
+            sudo=True,
+            check=False,
+        )
+
+    def test_os_variant_supported_returns_true_when_variant_is_listed(self):
+        output = "short-id | name\ngeneric | Generic\nubuntu24.04 | Ubuntu 24.04\n"
+
+        with patch.object(
+            provision.subprocess,
+            "run",
+            return_value=type("Result", (), {"returncode": 0, "stdout": output})(),
+        ):
+            self.assertTrue(provision.os_variant_supported("ubuntu24.04"))
+
+    def test_os_variant_supported_returns_false_when_variant_is_missing(self):
+        output = "short-id | name\ngeneric | Generic\nubuntu24.04 | Ubuntu 24.04\n"
+
+        with patch.object(
+            provision.subprocess,
+            "run",
+            return_value=type("Result", (), {"returncode": 0, "stdout": output})(),
+        ):
+            self.assertFalse(provision.os_variant_supported("debian12"))
+
+    def test_os_variant_supported_skips_validation_when_query_fails(self):
+        with patch.object(
+            provision.subprocess,
+            "run",
+            return_value=type("Result", (), {"returncode": 1, "stdout": ""})(),
+        ):
+            self.assertTrue(provision.os_variant_supported("anything"))
+
+    def test_os_variant_supported_skips_validation_when_virt_install_is_missing(self):
+        with patch.object(provision.subprocess, "run", side_effect=FileNotFoundError):
+            self.assertTrue(provision.os_variant_supported("anything"))
+
+    def test_os_variant_supported_skips_validation_when_output_is_unparseable(self):
+        with patch.object(
+            provision.subprocess,
+            "run",
+            return_value=type("Result", (), {"returncode": 0, "stdout": "no table output"})(),
+        ):
+            self.assertTrue(provision.os_variant_supported("anything"))
+
+    def test_validate_os_variant_raises_for_unsupported_value(self):
+        with patch.object(provision, "os_variant_supported", return_value=False):
+            with self.assertRaisesRegex(ValueError, "image.os_variant 'debian12'"):
+                provision.validate_os_variant("debian12")
+
     def test_create_nat_network_defines_network_when_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             fake_xml_path = Path(tmpdir) / "demo-net.xml"
@@ -273,6 +356,51 @@ class LibvirtProvisionTests(unittest.TestCase):
                 )
 
         run_mock.assert_not_called()
+
+    def test_create_nat_network_cleans_stale_bridge_before_define(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake_xml_path = Path(tmpdir) / "demo-net.xml"
+
+            def fake_path(path_str):
+                if path_str == "/tmp":
+                    return Path(tmpdir)
+                return Path(path_str)
+
+            with patch.object(provision, "Path", side_effect=fake_path), patch.object(
+                provision, "default_nat_bridge_name", return_value="virbr-demo"
+            ), patch.object(
+                provision.subprocess,
+                "run",
+                side_effect=[
+                    type("Result", (), {"returncode": 1})(),
+                    type("Result", (), {"returncode": 0})(),
+                ],
+            ), patch.object(provision, "run") as run_mock:
+                provision.create_nat_network(
+                    "demo",
+                    {
+                        "name": "demo-net",
+                        "gateway": "192.168.240.1",
+                        "mac": "52:54:00:aa:bb:cc",
+                        "vm_ip": "192.168.240.50",
+                        "dhcp_start": "192.168.240.50",
+                        "dhcp_end": "192.168.240.99",
+                    },
+                )
+
+        self.assertEqual(
+            run_mock.call_args_list,
+            [
+                call(
+                    ["ip", "link", "delete", "virbr-demo", "type", "bridge"],
+                    sudo=True,
+                    check=False,
+                ),
+                call(["virsh", "net-define", str(fake_xml_path)], sudo=True),
+                call(["virsh", "net-autostart", "demo-net"], sudo=True),
+                call(["virsh", "net-start", "demo-net"], sudo=True),
+            ],
+        )
 
     def test_vm_exists_reflects_subprocess_status(self):
         with patch.object(

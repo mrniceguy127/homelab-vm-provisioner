@@ -96,6 +96,98 @@ class BuildNetworkConfigTests(unittest.TestCase):
                 },
             )
 
+    def test_raises_for_invalid_nat_custom_subnet_prefix(self):
+        with patch.object(cli, "random_mac", return_value="52:54:00:aa:bb:cc"):
+            with self.assertRaisesRegex(ValueError, "network.subnet_prefix"):
+                cli.build_network_config(
+                    "demo",
+                    {"mode": "nat-custom", "subnet_prefix": "192.168.300"},
+                )
+
+    def test_raises_for_nat_custom_address_outside_cidr(self):
+        with patch.object(cli, "random_mac", return_value="52:54:00:aa:bb:cc"):
+            with self.assertRaisesRegex(ValueError, "network.gateway must be inside network.cidr"):
+                cli.build_network_config(
+                    "demo",
+                    {
+                        "mode": "nat-custom",
+                        "cidr": "192.168.240.0/24",
+                        "gateway": "192.168.241.1",
+                        "vm_ip": "192.168.240.50",
+                        "dhcp_start": "192.168.240.50",
+                        "dhcp_end": "192.168.240.99",
+                    },
+                )
+
+    def test_raises_for_invalid_nat_custom_cidr(self):
+        with self.assertRaisesRegex(ValueError, "network.cidr"):
+            cli._validate_nat_custom_network(
+                {
+                    "cidr": "not-a-network",
+                    "gateway": "192.168.240.1",
+                    "vm_ip": "192.168.240.50",
+                    "dhcp_start": "192.168.240.50",
+                    "dhcp_end": "192.168.240.99",
+                }
+            )
+
+    def test_raises_for_nat_custom_non_slash_24_cidr(self):
+        with self.assertRaisesRegex(ValueError, "network.cidr"):
+            cli._validate_nat_custom_network(
+                {
+                    "cidr": "192.168.240.0/25",
+                    "gateway": "192.168.240.1",
+                    "vm_ip": "192.168.240.50",
+                    "dhcp_start": "192.168.240.50",
+                    "dhcp_end": "192.168.240.99",
+                }
+            )
+
+    def test_raises_for_invalid_nat_custom_ipv4_address(self):
+        with self.assertRaisesRegex(ValueError, "network.gateway"):
+            cli._validate_nat_custom_network(
+                {
+                    "cidr": "192.168.240.0/24",
+                    "gateway": "bad-address",
+                    "vm_ip": "192.168.240.50",
+                    "dhcp_start": "192.168.240.50",
+                    "dhcp_end": "192.168.240.99",
+                }
+            )
+
+    def test_raises_for_nat_custom_ipv6_address(self):
+        with self.assertRaisesRegex(ValueError, "network.gateway"):
+            cli._validate_nat_custom_network(
+                {
+                    "cidr": "192.168.240.0/24",
+                    "gateway": "::1",
+                    "vm_ip": "192.168.240.50",
+                    "dhcp_start": "192.168.240.50",
+                    "dhcp_end": "192.168.240.99",
+                }
+            )
+
+    def test_raises_when_dhcp_start_is_greater_than_dhcp_end(self):
+        with self.assertRaisesRegex(ValueError, "network.dhcp_start must not be greater"):
+            cli._validate_nat_custom_network(
+                {
+                    "cidr": "192.168.240.0/24",
+                    "gateway": "192.168.240.1",
+                    "vm_ip": "192.168.240.50",
+                    "dhcp_start": "192.168.240.99",
+                    "dhcp_end": "192.168.240.50",
+                }
+            )
+
+
+class VmNameValidationTests(unittest.TestCase):
+    def test_accepts_vm_name_at_limit(self):
+        self.assertIsNone(cli.validate_vm_name("a" * 12))
+
+    def test_rejects_vm_name_over_limit(self):
+        with self.assertRaisesRegex(ValueError, "vm.name must be 12 characters or fewer"):
+            cli.validate_vm_name("a" * 13)
+
 
 class SummaryTests(unittest.TestCase):
     def test_print_create_summary_formats_bridge_access(self):
@@ -254,6 +346,8 @@ class CreateTests(unittest.TestCase):
             ), patch.object(
                 cli, "image_settings_for_config", return_value=image_settings
             ) as image_settings_mock, patch.object(
+                cli, "validate_os_variant"
+            ) as validate_os_variant_mock, patch.object(
                 cli, "ensure_base_image", return_value=Path("/images/ubuntu-24.04.img")
             ), patch.object(
                 cli, "create_vm_disk", return_value=Path("/images/demo.qcow2")
@@ -315,6 +409,7 @@ class CreateTests(unittest.TestCase):
             },
             global_config=global_config,
         )
+        validate_os_variant_mock.assert_called_once_with("ubuntu24.04")
         create_nat_network_mock.assert_called_once_with("demo", expected_network)
 
         render_context, template_name, render_vm_data_dir = render_templates_mock.call_args.args
@@ -394,6 +489,35 @@ class CreateTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "vm.trust"):
                     cli.create(str(config_path))
 
+    def test_rejects_vm_name_that_is_too_long(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            tenant_key = tmpdir_path / "tenant.pub"
+            tenant_key.write_text("ssh-ed25519 AAA tenant\n", encoding="utf-8")
+            config_path = tmpdir_path / "demo.yaml"
+            config_path.write_text(
+                textwrap.dedent(
+                    f"""\
+                    vm:
+                      name: grant-minecraft
+                      user: tenant
+                      ssh_key_file: {tenant_key.as_posix()}
+                      ram_mb: 4096
+                      vcpus: 2
+                      disk_gb: 40
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(cli, "require_tools"), patch.object(
+                cli, "load_global_config", return_value={}
+            ), patch.object(cli, "save_vm_state") as save_vm_state_mock:
+                with self.assertRaisesRegex(ValueError, "vm.name must be 12 characters or fewer"):
+                    cli.create(str(config_path))
+
+        save_vm_state_mock.assert_not_called()
+
     def test_raises_when_vm_ssh_key_is_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "demo.yaml"
@@ -419,6 +543,39 @@ class CreateTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(FileNotFoundError, "Missing VM SSH key file"):
                     cli.create(str(config_path))
+
+    def test_raises_early_when_os_variant_is_unsupported(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            tenant_key = tmpdir_path / "tenant.pub"
+            tenant_key.write_text("ssh-ed25519 AAA tenant\n", encoding="utf-8")
+            config_path = tmpdir_path / "demo.yaml"
+            config_path.write_text(
+                textwrap.dedent(
+                    f"""\
+                    vm:
+                      name: demo
+                      user: tenant
+                      ssh_key_file: {tenant_key.as_posix()}
+                      ram_mb: 4096
+                      vcpus: 2
+                      disk_gb: 40
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(cli, "require_tools"), patch.object(
+                cli, "load_global_config", return_value={}
+            ), patch.object(
+                cli, "image_settings_for_config", return_value={"os_variant": "debian12"}
+            ), patch.object(
+                cli, "validate_os_variant", side_effect=ValueError("bad os variant")
+            ), patch.object(cli, "save_vm_state") as save_vm_state_mock:
+                with self.assertRaisesRegex(ValueError, "bad os variant"):
+                    cli.create(str(config_path))
+
+        save_vm_state_mock.assert_not_called()
 
     def test_allows_vm_creation_without_tenant_ssh_key(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -467,6 +624,8 @@ class CreateTests(unittest.TestCase):
                 cli, "run"
             ), patch.object(
                 cli, "image_settings_for_config", return_value=image_settings
+            ), patch.object(
+                cli, "validate_os_variant"
             ), patch.object(
                 cli, "ensure_base_image", return_value=Path("/images/ubuntu-24.04.img")
             ), patch.object(
@@ -541,6 +700,8 @@ class CreateTests(unittest.TestCase):
                 cli, "run"
             ), patch.object(
                 cli, "image_settings_for_config", return_value=image_settings
+            ), patch.object(
+                cli, "validate_os_variant"
             ), patch.object(
                 cli, "ensure_base_image", return_value=Path("/images/ubuntu-24.04.img")
             ), patch.object(
@@ -714,6 +875,10 @@ class DestroyTests(unittest.TestCase):
         ), patch.object(
             cli, "vm_exists", return_value=True
         ), patch.object(
+            cli, "bridge_interface_exists", side_effect=[True, True]
+        ) as bridge_exists_mock, patch.object(
+            cli, "cleanup_bridge_interface"
+        ) as cleanup_bridge_mock, patch.object(
             cli, "cleanup_firewalld_vm_policy"
         ) as cleanup_firewall_mock, patch.object(
             cli, "cleanup_vm_storage"
@@ -733,6 +898,11 @@ class DestroyTests(unittest.TestCase):
             [{"host": 2222, "guest": 22, "proto": "tcp"}],
         )
         cleanup_storage_mock.assert_called_once_with("demo")
+        self.assertEqual(bridge_exists_mock.call_count, 2)
+        cleanup_bridge_mock.assert_has_calls(
+            [call(cli.default_nat_bridge_name("demo")), call(cli.legacy_nat_bridge_name("demo"))],
+            any_order=True,
+        )
         cleanup_artifacts_mock.assert_called_once_with(
             "demo",
             admin_private_key="/vm/keys/admin/demo_admin_ed25519",
@@ -756,6 +926,10 @@ class DestroyTests(unittest.TestCase):
         with patch.object(cli, "load_vm_state", return_value={}), patch.object(
             cli, "discover_vm_network", return_value={}
         ), patch.object(cli, "vm_exists", return_value=False), patch.object(
+            cli, "bridge_interface_exists", side_effect=[False, False]
+        ), patch.object(
+            cli, "cleanup_bridge_interface"
+        ) as cleanup_bridge_mock, patch.object(
             cli, "cleanup_firewalld_vm_policy"
         ), patch.object(cli, "cleanup_vm_storage"), patch.object(
             cli, "cleanup_local_vm_artifacts"
@@ -769,3 +943,4 @@ class DestroyTests(unittest.TestCase):
                 call(["virsh", "net-undefine", "demo-net"], sudo=True, check=False),
             ],
         )
+        cleanup_bridge_mock.assert_not_called()

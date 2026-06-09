@@ -1,5 +1,6 @@
 """Provisioning helpers for libvirt resources and local artifacts."""
 
+import hashlib
 import shutil
 import subprocess
 from pathlib import Path
@@ -12,6 +13,31 @@ from .constants import (
     TEMPLATES_DIR,
 )
 from .system import run
+
+
+def default_nat_bridge_name(vm_name):
+    """Return the default libvirt bridge name for a VM NAT network.
+
+    Args:
+        vm_name: VM name.
+
+    Returns:
+        str: Stable bridge name within Linux interface length limits.
+    """
+    suffix = hashlib.sha1(vm_name.encode("utf-8")).hexdigest()[:8]
+    return f"virbr-{suffix}"
+
+
+def legacy_nat_bridge_name(vm_name):
+    """Return the historical default bridge name for backward cleanup.
+
+    Args:
+        vm_name: VM name.
+
+    Returns:
+        str: Older bridge naming scheme based on a truncated VM name.
+    """
+    return f"virbr-{vm_name[:6]}"
 
 
 def admin_private_key_path(vm_name, admin_key_dir=None):
@@ -159,6 +185,89 @@ def create_seed_iso(vm_name, user_data_path, meta_data_path):
     return seed_iso
 
 
+def os_variant_supported(os_variant):
+    """Return whether the host recognizes a libvirt OS variant.
+
+    Args:
+        os_variant: Libvirt OS variant identifier.
+
+    Returns:
+        bool: ``True`` when the variant is listed by ``virt-install --osinfo list``.
+        If the host cannot be queried, validation is skipped and ``True`` is
+        returned.
+    """
+    try:
+        result = subprocess.run(
+            ["virt-install", "--osinfo", "list"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except FileNotFoundError:
+        return True
+
+    if result.returncode != 0:
+        return True
+
+    known_variants = {
+        line.split("|", 1)[0].strip()
+        for line in result.stdout.splitlines()
+        if "|" in line and line.split("|", 1)[0].strip()
+    }
+    if not known_variants:
+        return True
+
+    return os_variant in known_variants
+
+
+def validate_os_variant(os_variant):
+    """Raise when a libvirt OS variant is not supported by the host.
+
+    Args:
+        os_variant: Libvirt OS variant identifier.
+
+    Raises:
+        ValueError: If the host does not list the supplied OS variant.
+    """
+    if os_variant_supported(os_variant):
+        return
+
+    raise ValueError(
+        f"image.os_variant '{os_variant}' is not supported by this host. "
+        "Run `virt-install --osinfo list` to see supported values, or use `generic`."
+    )
+
+
+def bridge_interface_exists(bridge_name):
+    """Return whether a Linux bridge interface exists.
+
+    Args:
+        bridge_name: Bridge interface name.
+
+    Returns:
+        bool: ``True`` when the interface exists.
+    """
+    try:
+        result = subprocess.run(
+            ["ip", "link", "show", bridge_name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return False
+
+    return result.returncode == 0
+
+
+def cleanup_bridge_interface(bridge_name):
+    """Remove a leftover Linux bridge interface.
+
+    Args:
+        bridge_name: Bridge interface name.
+    """
+    run(["ip", "link", "delete", bridge_name, "type", "bridge"], sudo=True, check=False)
+
+
 def create_nat_network(vm_name, network):
     """Create and start a libvirt NAT network when needed.
 
@@ -166,7 +275,7 @@ def create_nat_network(vm_name, network):
         vm_name: VM name.
         network: NAT network settings.
     """
-    bridge_name = network.get("bridge_name", f"virbr-{vm_name[:6]}")
+    bridge_name = network.get("bridge_name", default_nat_bridge_name(vm_name))
     xml = f"""
 <network>
   <name>{network['name']}</name>
@@ -191,6 +300,9 @@ def create_nat_network(vm_name, network):
     )
     if result.returncode == 0:
         return
+
+    if bridge_interface_exists(bridge_name):
+        cleanup_bridge_interface(bridge_name)
 
     run(["virsh", "net-define", str(xml_path)], sudo=True)
     run(["virsh", "net-autostart", network["name"]], sudo=True)

@@ -1,6 +1,7 @@
 """CLI orchestration for VM lifecycle commands."""
 
 import argparse
+import ipaddress
 import subprocess
 from pathlib import Path
 
@@ -21,17 +22,81 @@ from .network import discover_vm_network, pick_free_subnet, random_mac, resolve_
 from .provision import (
     admin_keypair,
     admin_private_key_path,
+    bridge_interface_exists,
+    cleanup_bridge_interface,
     cleanup_local_vm_artifacts,
     cleanup_vm_storage,
     create_nat_network,
     create_seed_iso,
     create_vm_disk,
+    default_nat_bridge_name,
     ensure_base_image,
+    legacy_nat_bridge_name,
     render_templates,
+    validate_os_variant,
     virt_install,
     vm_exists,
 )
 from .system import require_tools, run
+
+MAX_VM_NAME_LENGTH = 12
+
+
+def validate_vm_name(vm_name):
+    """Validate the VM name against derived firewalld resource limits.
+
+    Args:
+        vm_name: VM name from config.
+
+    Raises:
+        ValueError: If the VM name is too long for the default derived zone name.
+    """
+    if len(vm_name) <= MAX_VM_NAME_LENGTH:
+        return
+
+    raise ValueError(
+        "vm.name must be 12 characters or fewer so the default firewalld zone name "
+        f"'{vm_name}-zone' stays within the 17-character limit"
+    )
+
+
+def _validate_nat_custom_network(network):
+    """Validate explicit NAT custom network values.
+
+    Args:
+        network: Effective NAT custom network settings.
+
+    Raises:
+        ValueError: If the CIDR or any related IP address is invalid.
+    """
+    cidr_text = network["cidr"]
+    try:
+        cidr = ipaddress.ip_network(cidr_text, strict=True)
+    except ValueError as exc:
+        raise ValueError(f"network.cidr must be a valid IPv4 /24 network: {cidr_text}") from exc
+
+    if cidr.version != 4 or cidr.prefixlen != 24:
+        raise ValueError(f"network.cidr must be a valid IPv4 /24 network: {cidr_text}")
+
+    for field in ("gateway", "vm_ip", "dhcp_start", "dhcp_end"):
+        value = network[field]
+        try:
+            address = ipaddress.ip_address(value)
+        except ValueError as exc:
+            raise ValueError(f"network.{field} must be a valid IPv4 address: {value}") from exc
+
+        if address.version != 4:
+            raise ValueError(f"network.{field} must be a valid IPv4 address: {value}")
+        if address not in cidr:
+            raise ValueError(f"network.{field} must be inside network.cidr {cidr_text}: {value}")
+
+    dhcp_start = ipaddress.ip_address(network["dhcp_start"])
+    dhcp_end = ipaddress.ip_address(network["dhcp_end"])
+    if dhcp_start > dhcp_end:
+        raise ValueError(
+            "network.dhcp_start must not be greater than network.dhcp_end: "
+            f"{dhcp_start} > {dhcp_end}"
+        )
 
 
 def build_network_config(vm_name, net_cfg):
@@ -62,6 +127,13 @@ def build_network_config(vm_name, net_cfg):
     if mode == "nat-custom":
         prefix = net_cfg.get("subnet_prefix")
         if prefix:
+            try:
+                ipaddress.ip_network(f"{prefix}.0/24", strict=True)
+            except ValueError as exc:
+                raise ValueError(
+                    f"network.subnet_prefix must be a valid IPv4 prefix like 192.168.240: {prefix}"
+                ) from exc
+
             network["prefix"] = prefix
             network["cidr"] = net_cfg.get("cidr", f"{prefix}.0/24")
             network["gateway"] = net_cfg.get("gateway", f"{prefix}.1")
@@ -77,6 +149,7 @@ def build_network_config(vm_name, net_cfg):
             for field in required:
                 network[field] = net_cfg[field]
 
+        _validate_nat_custom_network(network)
         network["name"] = net_cfg.get("name", f"{vm_name}-net")
         network["zone"] = net_cfg.get("zone", f"{vm_name}-zone")
         return network
@@ -202,10 +275,13 @@ def create(config_path):
 
     if trust not in ("trusted", "untrusted"):
         raise ValueError("vm.trust must be trusted or untrusted")
+    validate_vm_name(vm_name)
     if vm_ssh_key_file is not None and not vm_ssh_key_file.exists():
         raise FileNotFoundError(f"Missing VM SSH key file: {vm_ssh_key_file}")
 
     vm_data_dir = vm_data_dir_for_config(vm_name, config_data, global_config=global_config)
+    image_settings = image_settings_for_config(config_data, global_config=global_config)
+    validate_os_variant(image_settings["os_variant"])
     admin_private_key, admin_public_key = admin_keypair(
         vm_name,
         admin_key_dir=default_admin_key_dir(global_config),
@@ -237,7 +313,6 @@ def create(config_path):
     run(["systemctl", "enable", "--now", "libvirtd"], sudo=True)
     run(["systemctl", "enable", "--now", "firewalld"], sudo=True)
 
-    image_settings = image_settings_for_config(config_data, global_config=global_config)
     base_img = ensure_base_image(image_settings)
     vm_disk = create_vm_disk(vm_name, vm["disk_gb"], base_img)
     if network["mode"].startswith("nat"):
@@ -341,6 +416,15 @@ def destroy(vm_name):
     cleanup_firewalld_vm_policy(vm_name, network, ports)
     run(["virsh", "net-destroy", network["name"]], sudo=True, check=False)
     run(["virsh", "net-undefine", network["name"]], sudo=True, check=False)
+
+    for bridge_name in {
+        network.get("bridge_name"),
+        default_nat_bridge_name(vm_name),
+        legacy_nat_bridge_name(vm_name),
+    }:
+        if bridge_name and bridge_interface_exists(bridge_name):
+            cleanup_bridge_interface(bridge_name)
+
     cleanup_vm_storage(vm_name)
     cleanup_local_vm_artifacts(
         vm_name,

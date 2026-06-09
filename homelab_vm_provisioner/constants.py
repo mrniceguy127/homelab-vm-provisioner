@@ -13,7 +13,7 @@ LEGACY_VM_BUILD_DIR = PROJECT_DIR / ".build"
 IMG_DIR = Path("/var/lib/libvirt/images")
 BASE_IMG_NAME = "debian-12-generic-amd64.qcow2"
 BASE_IMG_URL = "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2"
-OS_VARIANT = "debian12"
+OS_VARIANT = "generic"
 
 DEFAULT_REQUIRED_TOOLS = (
     "virsh",
