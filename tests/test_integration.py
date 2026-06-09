@@ -35,7 +35,10 @@ class FakeHost:
               <bridge name='virbr-demo' stp='on' delay='0'/>
               <ip address='{network_config['gateway']}' netmask='255.255.255.0'>
                 <dhcp>
-                  <host mac='{network_config['mac']}' name='{vm_name}' ip='{network_config['vm_ip']}'/>
+                  <host
+                    mac='{network_config['mac']}'
+                    name='{vm_name}'
+                    ip='{network_config['vm_ip']}'/>
                   <range start='{network_config['dhcp_start']}' end='{network_config['dhcp_end']}'/>
                 </dhcp>
               </ip>
@@ -240,7 +243,13 @@ class IntegrationTests(unittest.TestCase):
         user_key.write_text("ssh-ed25519 AAA tenant\n", encoding="utf-8")
         return user_key
 
-    def write_nat_config(self, root_dir, ssh_key_file="tenant.pub", vm_data_dir=None, image_config=None):
+    def write_nat_config(
+        self,
+        root_dir,
+        ssh_key_file="tenant.pub",
+        vm_data_dir=None,
+        image_config=None,
+    ):
         config_path = root_dir / "configs" / "demo.yaml"
         config_path.parent.mkdir(parents=True, exist_ok=True)
         lines = [
@@ -288,7 +297,9 @@ class IntegrationTests(unittest.TestCase):
     def patch_integration_environment(self, stack, host, root_dir, img_dir):
         stack.enter_context(patch.object(cli, "require_tools"))
         stack.enter_context(patch.object(cli, "random_mac", return_value="52:54:00:aa:bb:cc"))
-        stack.enter_context(patch.object(cli, "create_nat_network", side_effect=host.create_nat_network))
+        stack.enter_context(
+            patch.object(cli, "create_nat_network", side_effect=host.create_nat_network)
+        )
         stack.enter_context(patch.object(cli, "run", side_effect=host.cli_run))
         stack.enter_context(patch.object(config, "PROJECT_DIR", root_dir))
         stack.enter_context(patch.object(config, "GLOBAL_CONFIG_PATH", root_dir / "vmctl.yaml"))
@@ -358,7 +369,12 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("ssh-ed25519 AAA tenant", user_data_path.read_text(encoding="utf-8"))
             self.assertIn(
                 (
-                    ["wget", "-O", str(img_dir / "ubuntu-24.04.img"), "https://example.invalid/images/ubuntu-24.04.img"],
+                    [
+                        "wget",
+                        "-O",
+                        str(img_dir / "ubuntu-24.04.img"),
+                        "https://example.invalid/images/ubuntu-24.04.img",
+                    ],
                     True,
                     True,
                 ),
@@ -450,7 +466,12 @@ class IntegrationTests(unittest.TestCase):
             )
             self.assertIn(
                 (
-                    ["wget", "-O", str(img_dir / "fedora-40.qcow2"), "https://example.invalid/images/fedora-40.qcow2"],
+                    [
+                        "wget",
+                        "-O",
+                        str(img_dir / "fedora-40.qcow2"),
+                        "https://example.invalid/images/fedora-40.qcow2",
+                    ],
                     True,
                     True,
                 ),

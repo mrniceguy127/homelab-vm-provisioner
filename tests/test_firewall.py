@@ -95,7 +95,11 @@ class ZoneLookupTests(unittest.TestCase):
         ), patch.object(
             firewall,
             "list_zone_forward_ports",
-            side_effect=[[], ["port=2222:proto=tcp:toaddr=192.168.240.50:toport=22"], ["port=2222:proto=tcp:toaddr=192.168.240.50:toport=22"]],
+            side_effect=[
+                [],
+                ["port=2222:proto=tcp:toaddr=192.168.240.50:toport=22"],
+                ["port=2222:proto=tcp:toaddr=192.168.240.50:toport=22"],
+            ],
         ):
             self.assertEqual(
                 firewall.find_forward_port_rules_for_vm("192.168.240.50"),
@@ -174,7 +178,10 @@ class ApplyFirewalldNatPolicyTests(unittest.TestCase):
 class RemoveForwardPortRuleTests(unittest.TestCase):
     def test_remove_forward_port_rule_uses_zone_when_provided(self):
         with patch.object(firewall, "run") as run_mock:
-            firewall.remove_forward_port_rule("port=2222:proto=tcp:toaddr=1.2.3.4:toport=22", zone="demo-zone")
+            firewall.remove_forward_port_rule(
+                "port=2222:proto=tcp:toaddr=1.2.3.4:toport=22",
+                zone="demo-zone",
+            )
 
         run_mock.assert_called_once_with(
             [
@@ -336,12 +343,17 @@ class CleanupFirewalldVmPolicyTests(unittest.TestCase):
         remove_rule_mock.assert_called_once_with(
             "port=2222:proto=tcp:toaddr=192.168.240.50:toport=22"
         )
-        self.assertEqual(run_mock.call_args_list[-1], call(["firewall-cmd", "--reload"], sudo=True, check=False))
+        self.assertEqual(
+            run_mock.call_args_list[-1],
+            call(["firewall-cmd", "--reload"], sudo=True, check=False),
+        )
 
     def test_skips_reload_when_no_cleanup_is_needed(self):
         with patch.object(firewall, "tool_exists", return_value=True), patch.object(
             firewall, "firewalld_zone_exists", return_value=False
-        ), patch.object(firewall, "find_forward_port_rules_for_vm") as find_rules_mock, patch.object(
+        ), patch.object(
+            firewall, "find_forward_port_rules_for_vm"
+        ) as find_rules_mock, patch.object(
             firewall, "run"
         ) as run_mock:
             firewall.cleanup_firewalld_vm_policy("demo", {}, [])
@@ -363,4 +375,7 @@ class CleanupFirewalldVmPolicyTests(unittest.TestCase):
                 [],
             )
 
-        self.assertEqual(run_mock.call_args_list[-1], call(["firewall-cmd", "--reload"], sudo=True, check=False))
+        self.assertEqual(
+            run_mock.call_args_list[-1],
+            call(["firewall-cmd", "--reload"], sudo=True, check=False),
+        )

@@ -9,6 +9,13 @@ from helpers import completed_process
 from homelab_vm_provisioner import cli
 
 
+def printed_output(print_mock):
+    return "\n".join(
+        " ".join(str(arg) for arg in printed_call.args)
+        for printed_call in print_mock.call_args_list
+    )
+
+
 class BuildNetworkConfigTests(unittest.TestCase):
     def test_builds_nat_auto_network(self):
         with patch.object(
@@ -107,7 +114,7 @@ class SummaryTests(unittest.TestCase):
                 [],
             )
 
-        printed = "\n".join(" ".join(str(arg) for arg in call.args) for call in print_mock.call_args_list)
+        printed = printed_output(print_mock)
         self.assertIn("Admin SSH:", printed)
         self.assertIn(f"ssh -i {admin_key} vmadmin@VM_LAN_IP", printed)
 
@@ -126,7 +133,7 @@ class SummaryTests(unittest.TestCase):
                 [{"host": 8080, "guest": 80}],
             )
 
-        printed = "\n".join(" ".join(str(arg) for arg in call.args) for call in print_mock.call_args_list)
+        printed = printed_output(print_mock)
         self.assertNotIn("Admin SSH:", printed)
         self.assertNotIn("Tenant SSH:", printed)
 
@@ -539,7 +546,9 @@ class CreateTests(unittest.TestCase):
             ), patch.object(
                 cli, "create_vm_disk", return_value=Path("/images/demo.qcow2")
             ), patch.object(
-                cli, "render_templates", return_value=(Path("/build/user-data"), Path("/build/meta-data"))
+                cli,
+                "render_templates",
+                return_value=(Path("/build/user-data"), Path("/build/meta-data")),
             ), patch.object(
                 cli, "save_vm_state"
             ) as save_state_mock, patch.object(
@@ -568,7 +577,7 @@ class CreateTests(unittest.TestCase):
             Path("/images/demo-seed.iso"),
             "ubuntu24.04",
         )
-        printed = "\n".join(" ".join(str(arg) for arg in call.args) for call in print_mock.call_args_list)
+        printed = printed_output(print_mock)
         self.assertIn("Bridge mode selected", printed)
 
 

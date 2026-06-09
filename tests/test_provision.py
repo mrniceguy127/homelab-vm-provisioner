@@ -379,7 +379,9 @@ class CleanupTests(unittest.TestCase):
             vm_data_dir.mkdir(parents=True)
             (vm_data_dir / "user-data").write_text("user", encoding="utf-8")
 
-            with patch.object(provision, "default_vm_data_dir", return_value=vm_data_dir), patch.object(
+            with patch.object(
+                provision, "default_vm_data_dir", return_value=vm_data_dir
+            ), patch.object(
                 provision, "admin_private_key_path", return_value=key_path
             ), patch.object(provision, "delete_vm_state") as delete_state_mock:
                 provision.cleanup_local_vm_artifacts("demo")
@@ -390,7 +392,9 @@ class CleanupTests(unittest.TestCase):
         delete_state_mock.assert_called_once_with("demo")
 
     def test_cleanup_local_vm_artifacts_tolerates_missing_files(self):
-        with patch.object(provision, "default_vm_data_dir", return_value=Path("/missing/vm-data")), patch.object(
+        with patch.object(
+            provision, "default_vm_data_dir", return_value=Path("/missing/vm-data")
+        ), patch.object(
             provision, "admin_private_key_path", return_value=Path("/missing/demo_admin_ed25519")
         ), patch.object(provision, "delete_vm_state") as delete_state_mock:
             provision.cleanup_local_vm_artifacts("demo")

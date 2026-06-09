@@ -149,13 +149,19 @@ class ParseNetworkFromXmlTests(unittest.TestCase):
     def test_returns_none_when_ip_node_is_missing(self):
         self.assertIsNone(
             network.parse_network_from_xml(
-                "<network><name>demo-net</name><dhcp><host name='demo' ip='1.2.3.4'/></dhcp></network>",
+                (
+                    "<network><name>demo-net</name><dhcp>"
+                    "<host name='demo' ip='1.2.3.4'/></dhcp></network>"
+                ),
                 "demo",
             )
         )
 
     def test_returns_none_when_required_network_fields_are_missing(self):
-        xml_text = "<network><name>demo-net</name><ip netmask='255.255.255.0'><dhcp><host name='demo' ip='1.2.3.4'/></dhcp></ip></network>"
+        xml_text = (
+            "<network><name>demo-net</name><ip netmask='255.255.255.0'>"
+            "<dhcp><host name='demo' ip='1.2.3.4'/></dhcp></ip></network>"
+        )
         self.assertIsNone(network.parse_network_from_xml(xml_text, "demo"))
 
 
@@ -187,7 +193,10 @@ class RoutesAndLibvirtDiscoveryTests(unittest.TestCase):
         with patch.object(
             network.subprocess,
             "run",
-            side_effect=[completed_process(stdout="\nnet-a\n"), completed_process(stdout="<network>a</network>")],
+            side_effect=[
+                completed_process(stdout="\nnet-a\n"),
+                completed_process(stdout="<network>a</network>"),
+            ],
         ):
             self.assertEqual(network.get_existing_virsh_networks_text(), "<network>a</network>\n")
 
@@ -227,13 +236,17 @@ class RoutesAndLibvirtDiscoveryTests(unittest.TestCase):
             )
 
     def test_discover_vm_network_returns_none_when_no_network_matches(self):
-        with patch.object(network, "list_virsh_network_names", return_value=["net-a"]), patch.object(
+        with patch.object(
+            network, "list_virsh_network_names", return_value=["net-a"]
+        ), patch.object(
             network, "capture_or_none", return_value=None
         ):
             self.assertIsNone(network.discover_vm_network("demo"))
 
     def test_subnet_appears_used_checks_routes_and_network_xml(self):
-        with patch.object(network, "get_existing_routes_text", return_value="default\n"), patch.object(
+        with patch.object(
+            network, "get_existing_routes_text", return_value="default\n"
+        ), patch.object(
             network, "get_existing_virsh_networks_text", return_value="prefix 192.168.240.\n"
         ):
             self.assertTrue(network.subnet_appears_used("192.168.240."))

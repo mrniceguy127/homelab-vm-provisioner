@@ -177,7 +177,10 @@ class DefaultPathTests(unittest.TestCase):
                 config.default_admin_key_dir({}),
                 repo_root / "vm" / "keys" / "admin",
             )
-            self.assertEqual(config.default_vm_data_dir("demo", {}), repo_root / "vm" / "data" / "demo")
+            self.assertEqual(
+                config.default_vm_data_dir("demo", {}),
+                repo_root / "vm" / "data" / "demo",
+            )
 
     def test_global_config_overrides_default_roots(self):
         repo_root = Path("C:/repo")
@@ -191,8 +194,14 @@ class DefaultPathTests(unittest.TestCase):
         }
 
         with patch.object(config, "PROJECT_DIR", repo_root):
-            self.assertEqual(config.default_vm_data_root(global_config), repo_root / "custom" / "vm-data")
-            self.assertEqual(config.default_vm_state_root(global_config), repo_root / "custom" / "state")
+            self.assertEqual(
+                config.default_vm_data_root(global_config),
+                repo_root / "custom" / "vm-data",
+            )
+            self.assertEqual(
+                config.default_vm_state_root(global_config),
+                repo_root / "custom" / "state",
+            )
             self.assertEqual(
                 config.default_user_key_dir(global_config),
                 repo_root / "custom" / "user-keys",
@@ -277,7 +286,10 @@ class DefaultPathTests(unittest.TestCase):
     def test_resolve_user_key_path_keeps_absolute_path(self):
         absolute_key = Path("C:/keys/tenant.pub")
 
-        self.assertEqual(config.resolve_user_key_path(str(absolute_key), global_config={}), absolute_key)
+        self.assertEqual(
+            config.resolve_user_key_path(str(absolute_key), global_config={}),
+            absolute_key,
+        )
 
     def test_resolve_user_key_path_returns_project_relative_fallback_for_nested_path(self):
         repo_root = Path("C:/repo")
@@ -293,7 +305,10 @@ class StateFileTests(unittest.TestCase):
         repo_root = Path("C:/repo")
 
         with patch.object(config, "PROJECT_DIR", repo_root):
-            self.assertEqual(config.state_file_for_vm("demo", {}), repo_root / "vm" / "state" / "demo.yaml")
+            self.assertEqual(
+                config.state_file_for_vm("demo", {}),
+                repo_root / "vm" / "state" / "demo.yaml",
+            )
 
     def test_save_and_load_vm_state_use_global_default_state_root(self):
         with tempfile.TemporaryDirectory() as tmpdir:
