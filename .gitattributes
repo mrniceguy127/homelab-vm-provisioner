@@ -3,5 +3,6 @@ vmssh-admin text eol=lf
 lint text eol=lf
 setup text eol=lf
 test text eol=lf
+coverage text eol=lf
 *.sh text eol=lf
 *.py text eol=lf

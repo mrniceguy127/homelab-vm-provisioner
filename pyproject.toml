@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "coverage[toml]>=7.6.0",
     "furo>=2024.8.6",
     "ruff>=0.15.0",
     "Sphinx>=8.1.0",
@@ -43,3 +44,15 @@ select = ["E", "F", "I"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["homelab_vm_provisioner"]
+
+[tool.coverage.run]
+branch = true
+source = ["homelab_vm_provisioner"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = false
+
+[tool.coverage.html]
+directory = "coverage-html"

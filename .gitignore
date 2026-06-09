@@ -18,4 +18,6 @@ pip-wheel-metadata/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+coverage-html/
+coverage-report.txt
 docs/_build/

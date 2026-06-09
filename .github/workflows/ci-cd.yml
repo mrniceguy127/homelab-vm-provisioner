@@ -1,0 +1,168 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Make helper scripts executable
+        run: chmod +x setup vmctl vmssh-admin test lint coverage
+
+      - name: Install project and dev tools
+        run: ./setup --skip-system-packages --dev --python python
+
+      - name: Run Ruff
+        run: ./lint
+
+      - name: Run unit tests
+        run: ./test
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Make helper scripts executable
+        run: chmod +x setup coverage
+
+      - name: Install project and dev tools
+        run: ./setup --skip-system-packages --dev --python python
+
+      - name: Run coverage
+        run: |
+          set -euo pipefail
+          ./coverage | tee coverage-report.txt
+          {
+            echo "## Coverage"
+            echo '```text'
+            cat coverage-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage-html
+
+  docs:
+    name: Build Docs
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Make helper scripts executable
+        run: chmod +x setup
+
+      - name: Install project and dev tools
+        run: ./setup --skip-system-packages --dev --python python
+
+      - name: Build HTML docs
+        run: python -m sphinx -b html docs docs/_build/html
+
+      - name: Upload HTML docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-html
+          path: docs/_build/html
+
+  deploy-docs:
+    name: Deploy Docs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs:
+      - coverage
+      - docs
+    permissions:
+      contents: write
+    concurrency:
+      group: docs-deploy-main
+      cancel-in-progress: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download docs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docs-html
+          path: docs-html
+
+      - name: Download coverage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage-html
+
+      - name: Assemble published site
+        run: |
+          set -euo pipefail
+          mkdir -p site/coverage
+          cp -a docs-html/. site/
+          cp -a coverage-html/. site/coverage/
+
+      - name: Publish docs to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: site
+          force_orphan: true
+          enable_jekyll: false
+          full_commit_message: "docs: publish generated site for ${{ github.sha }}"

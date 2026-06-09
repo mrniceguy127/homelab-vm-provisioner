@@ -69,8 +69,13 @@ homelab-vm/
 ├── vmctl
 ├── vmssh-admin
 ├── test
+├── coverage
 ├── lint
 ├── pyproject.toml
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yml
+│
 ├── homelab_vm_provisioner/
 │   ├── __main__.py
 │   ├── cli.py
@@ -124,7 +129,9 @@ homelab-vm/
 | lint | Ruff lint runner |
 | setup | Project setup script |
 | test | Unit test runner |
+| coverage | Coverage runner |
 | pyproject.toml | Project metadata and tool configuration |
+| .github/workflows | CI/CD automation |
 | homelab_vm_provisioner | Main Python package |
 | docs | Sphinx documentation source |
 | tests | Unit tests |
@@ -198,6 +205,15 @@ Install dev tools:
 ./setup --dev
 ```
 
+CI/CD:
+
+- runs lint and tests across Python 3.10, 3.11, and 3.12
+- enforces a coverage threshold
+- builds the Sphinx docs
+- uploads the HTML coverage artifact from the coverage job
+- publishes docs to the `gh-pages` branch on `main`
+- publishes the HTML coverage site to `gh-pages/coverage/` on `main`
+
 ## Build docs
 
 ```bash
@@ -214,6 +230,18 @@ docs/_build/html/
 
 ```bash
 ./test
+```
+
+## Run coverage
+
+```bash
+./coverage
+```
+
+HTML output:
+
+```text
+coverage-html/index.html
 ```
 
 ## Run linting

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [[ -x "$SCRIPT_DIR/.venv/bin/python" ]]; then
+    PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python"
+else
+    PYTHON_BIN="${PYTHON_BIN:-python3}"
+fi
+
+"$PYTHON_BIN" -m coverage run -m unittest discover -s "$SCRIPT_DIR/tests"
+"$PYTHON_BIN" -m coverage report
+"$PYTHON_BIN" -m coverage html -d "$SCRIPT_DIR/coverage-html"

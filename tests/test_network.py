@@ -115,6 +115,58 @@ class ParseNetworkFromXmlTests(unittest.TestCase):
         )
 
 
+class RoutesAndLibvirtDiscoveryTests(unittest.TestCase):
+    def test_get_existing_routes_text_returns_command_output(self):
+        with patch.object(
+            network.subprocess,
+            "run",
+            return_value=completed_process(stdout="default\n"),
+        ):
+            self.assertEqual(network.get_existing_routes_text(), "default\n")
+
+    def test_get_existing_virsh_networks_text_concatenates_network_xml(self):
+        with patch.object(
+            network.subprocess,
+            "run",
+            side_effect=[
+                completed_process(stdout="net-a\nnet-b\n"),
+                completed_process(stdout="<network>a</network>"),
+                completed_process(stdout="<network>b</network>"),
+            ],
+        ):
+            self.assertEqual(
+                network.get_existing_virsh_networks_text(),
+                "<network>a</network>\n<network>b</network>\n",
+            )
+
+    def test_list_virsh_network_names_filters_blank_lines(self):
+        with patch.object(
+            network.subprocess,
+            "run",
+            return_value=completed_process(stdout="net-a\n\nnet-b\n"),
+        ):
+            self.assertEqual(network.list_virsh_network_names(), ["net-a", "net-b"])
+
+    def test_discover_vm_network_returns_matching_network(self):
+        with patch.object(
+            network,
+            "list_virsh_network_names",
+            return_value=["net-a", "net-b"],
+        ), patch.object(
+            network,
+            "capture_or_none",
+            side_effect=["<network />", "<xml>match</xml>"],
+        ), patch.object(
+            network,
+            "parse_network_from_xml",
+            side_effect=[None, {"name": "net-b", "vm_ip": "192.168.122.50"}],
+        ):
+            self.assertEqual(
+                network.discover_vm_network("demo"),
+                {"name": "net-b", "vm_ip": "192.168.122.50"},
+            )
+
+
 class PickFreeSubnetTests(unittest.TestCase):
     def test_returns_first_available_prefix(self):
         with patch.object(network, "subnet_appears_used", side_effect=[True, True, False]):

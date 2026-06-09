@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from homelab_vm_provisioner import config
 
@@ -34,3 +35,29 @@ class ResolveConfigPathTests(unittest.TestCase):
     def test_raises_for_missing_config(self):
         with self.assertRaisesRegex(FileNotFoundError, "Missing config file"):
             config.resolve_config_path("config/does-not-exist")
+
+
+class StateFileTests(unittest.TestCase):
+    def test_build_dir_and_state_file_follow_vm_name(self):
+        with patch.object(config, "BUILD_DIR", Path("/tmp/build-root")):
+            self.assertEqual(config.build_dir_for_vm("demo"), Path("/tmp/build-root/demo"))
+            self.assertEqual(
+                config.state_file_for_vm("demo"),
+                Path("/tmp/build-root/demo/state.yaml"),
+            )
+
+    def test_save_and_load_vm_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            build_dir = Path(tmpdir)
+            state = {"network": {"name": "demo-net"}, "ports": [{"host": 2222}]}
+
+            with patch.object(config, "BUILD_DIR", build_dir):
+                config.save_vm_state("demo", state)
+                loaded = config.load_vm_state("demo")
+
+        self.assertEqual(loaded, state)
+
+    def test_load_vm_state_returns_empty_dict_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.object(config, "BUILD_DIR", Path(tmpdir)):
+                self.assertEqual(config.load_vm_state("missing"), {})

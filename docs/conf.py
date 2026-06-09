@@ -1,6 +1,7 @@
 """Sphinx configuration for Homelab VM Provisioner."""
 
 from pathlib import Path
+import shutil
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,3 +58,24 @@ html_theme_options = {
     "light_css_variables": _DARK_CSS,
     "dark_css_variables": _DARK_CSS,
 }
+
+
+def copy_coverage_site(app, exception):
+    """Copy the HTML coverage site into the built docs when available."""
+    if exception is not None or app.builder.format != "html":
+        return
+
+    coverage_source = ROOT / "coverage-html"
+    if not coverage_source.exists():
+        return
+
+    coverage_target = Path(app.outdir) / "coverage"
+    if coverage_target.exists():
+        shutil.rmtree(coverage_target)
+
+    shutil.copytree(coverage_source, coverage_target)
+
+
+def setup(app):
+    """Register custom Sphinx build hooks."""
+    app.connect("build-finished", copy_coverage_site)

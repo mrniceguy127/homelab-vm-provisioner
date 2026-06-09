@@ -9,6 +9,87 @@ from helpers import completed_process
 from homelab_vm_provisioner import cli
 
 
+class BuildNetworkConfigTests(unittest.TestCase):
+    def test_builds_nat_auto_network(self):
+        with patch.object(
+            cli,
+            "pick_free_subnet",
+            return_value={
+                "prefix": "192.168.120",
+                "cidr": "192.168.120.0/24",
+                "gateway": "192.168.120.1",
+                "vm_ip": "192.168.120.50",
+                "dhcp_start": "192.168.120.50",
+                "dhcp_end": "192.168.120.99",
+            },
+        ), patch.object(cli, "random_mac", return_value="52:54:00:aa:bb:cc"):
+            self.assertEqual(
+                cli.build_network_config("demo", {"mode": "nat-auto"}),
+                {
+                    "mode": "nat-auto",
+                    "mac": "52:54:00:aa:bb:cc",
+                    "prefix": "192.168.120",
+                    "cidr": "192.168.120.0/24",
+                    "gateway": "192.168.120.1",
+                    "vm_ip": "192.168.120.50",
+                    "dhcp_start": "192.168.120.50",
+                    "dhcp_end": "192.168.120.99",
+                    "name": "demo-net",
+                    "zone": "demo-zone",
+                },
+            )
+
+    def test_builds_bridge_network(self):
+        with patch.object(cli, "random_mac", return_value="52:54:00:aa:bb:cc"):
+            self.assertEqual(
+                cli.build_network_config("demo", {"mode": "bridge", "bridge_name": "br1"}),
+                {
+                    "mode": "bridge",
+                    "mac": "52:54:00:aa:bb:cc",
+                    "bridge_name": "br1",
+                    "vm_ip": "dhcp-from-router",
+                    "cidr": "main-lan",
+                },
+            )
+
+    def test_raises_for_missing_nat_custom_fields(self):
+        with patch.object(cli, "random_mac", return_value="52:54:00:aa:bb:cc"):
+            with self.assertRaisesRegex(ValueError, "Missing nat-custom network fields"):
+                cli.build_network_config("demo", {"mode": "nat-custom"})
+
+    def test_raises_for_invalid_network_mode(self):
+        with patch.object(cli, "random_mac", return_value="52:54:00:aa:bb:cc"):
+            with self.assertRaisesRegex(ValueError, "network.mode"):
+                cli.build_network_config("demo", {"mode": "invalid"})
+
+
+class ParserAndMainTests(unittest.TestCase):
+    def test_build_parser_parses_subcommands(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["destroy", "demo"])
+
+        self.assertEqual(args.command, "destroy")
+        self.assertEqual(args.name, "demo")
+
+    def test_main_dispatches_create(self):
+        with patch.object(cli, "create") as create_mock:
+            cli.main(["create", "configs/demo.yaml"])
+
+        create_mock.assert_called_once_with("configs/demo.yaml")
+
+    def test_main_dispatches_destroy(self):
+        with patch.object(cli, "destroy") as destroy_mock:
+            cli.main(["destroy", "demo"])
+
+        destroy_mock.assert_called_once_with("demo")
+
+    def test_main_dispatches_ssh_admin(self):
+        with patch.object(cli, "ssh_admin") as ssh_admin_mock:
+            cli.main(["ssh-admin", "demo", "--ip", "192.168.1.50"])
+
+        ssh_admin_mock.assert_called_once_with("demo", "192.168.1.50")
+
+
 class CreateTests(unittest.TestCase):
     def test_builds_nat_custom_network_from_subnet_prefix(self):
         with tempfile.TemporaryDirectory() as tmpdir:
