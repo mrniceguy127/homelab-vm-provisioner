@@ -667,6 +667,7 @@ ports:
 Notes:
 
 - For NAT-backed VMs, forwarded ports automatically install matching firewalld direct `FORWARD` accept rules so host and remote traffic can actually reach the guest port.
+- Those direct rules use a strongly negative priority (`-1000`) as a compatibility workaround so the accept rules win early in the `FORWARD` chain on hosts where later/default-priority rules would still leave guest traffic filtered.
 
 ---
 

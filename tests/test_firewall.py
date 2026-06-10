@@ -24,7 +24,7 @@ class ForwardPortSpecTests(unittest.TestCase):
                 "ipv4",
                 "filter",
                 "FORWARD",
-                "0",
+                "-1000",
                 "-p",
                 "tcp",
                 "-d",
@@ -33,6 +33,22 @@ class ForwardPortSpecTests(unittest.TestCase):
                 "22",
                 "-j",
                 "ACCEPT",
+            ],
+        )
+
+    def test_direct_forward_ports_deduplicate_configured_ports(self):
+        self.assertEqual(
+            firewall.direct_forward_ports(
+                [
+                    {"host": 2222, "guest": 22, "proto": "tcp"},
+                    {"host": 8080, "guest": 80, "proto": "tcp"},
+                    {"host": 51153, "guest": 25565, "proto": "udp"},
+                ]
+            ),
+            [
+                {"guest": "22", "proto": "tcp"},
+                {"guest": "80", "proto": "tcp"},
+                {"guest": "25565", "proto": "udp"},
             ],
         )
 
@@ -92,8 +108,8 @@ class ZoneLookupTests(unittest.TestCase):
             firewall,
             "capture_or_none",
             return_value=(
-                "ipv4 filter FORWARD 0 -p tcp -d 192.168.240.50 --dport 22 -j ACCEPT\n"
-                "ipv4 filter FORWARD 0 -p udp -d 192.168.240.50 --dport 25565 -j ACCEPT"
+                "ipv4 filter FORWARD -1000 -p tcp -d 192.168.240.50 --dport 22 -j ACCEPT\n"
+                "ipv4 filter FORWARD -1000 -p udp -d 192.168.240.50 --dport 25565 -j ACCEPT"
             ),
         ):
             self.assertEqual(
@@ -103,7 +119,7 @@ class ZoneLookupTests(unittest.TestCase):
                         "ipv4",
                         "filter",
                         "FORWARD",
-                        "0",
+                        "-1000",
                         "-p",
                         "tcp",
                         "-d",
@@ -117,7 +133,7 @@ class ZoneLookupTests(unittest.TestCase):
                         "ipv4",
                         "filter",
                         "FORWARD",
-                        "0",
+                        "-1000",
                         "-p",
                         "udp",
                         "-d",
@@ -139,7 +155,7 @@ class ZoneLookupTests(unittest.TestCase):
                     "ipv4",
                     "filter",
                     "FORWARD",
-                    "0",
+                    "-1000",
                     "-p",
                     "tcp",
                     "-d",
@@ -149,12 +165,12 @@ class ZoneLookupTests(unittest.TestCase):
                     "-j",
                     "ACCEPT",
                 ],
-                ["ipv4", "filter", "INPUT", "0", "-j", "ACCEPT"],
+                ["ipv4", "filter", "INPUT", "-1000", "-j", "ACCEPT"],
                 [
                     "ipv4",
                     "filter",
                     "FORWARD",
-                    "0",
+                    "-1000",
                     "-p",
                     "tcp",
                     "-d",
@@ -173,7 +189,7 @@ class ZoneLookupTests(unittest.TestCase):
                         "ipv4",
                         "filter",
                         "FORWARD",
-                        "0",
+                        "-1000",
                         "-p",
                         "tcp",
                         "-d",
@@ -277,7 +293,7 @@ class ApplyFirewalldNatPolicyTests(unittest.TestCase):
                     "ipv4",
                     "filter",
                     "FORWARD",
-                    "0",
+                    "-1000",
                     "-p",
                     "tcp",
                     "-d",
@@ -365,7 +381,7 @@ class RemoveForwardPortRuleTests(unittest.TestCase):
                     "ipv4",
                     "filter",
                     "FORWARD",
-                    "0",
+                    "-1000",
                     "-p",
                     "tcp",
                     "-d",
@@ -386,7 +402,7 @@ class RemoveForwardPortRuleTests(unittest.TestCase):
                 "ipv4",
                 "filter",
                 "FORWARD",
-                "0",
+                "-1000",
                 "-p",
                 "tcp",
                 "-d",
@@ -413,7 +429,7 @@ class CleanupFirewalldVmPolicyTests(unittest.TestCase):
                     "ipv4",
                     "filter",
                     "FORWARD",
-                    "0",
+                    "-1000",
                     "-p",
                     "tcp",
                     "-d",
@@ -453,7 +469,7 @@ class CleanupFirewalldVmPolicyTests(unittest.TestCase):
                         "ipv4",
                         "filter",
                         "FORWARD",
-                        "0",
+                        "-1000",
                         "-p",
                         "tcp",
                         "-d",
@@ -595,7 +611,7 @@ class CleanupFirewalldVmPolicyTests(unittest.TestCase):
                 "ipv4",
                 "filter",
                 "FORWARD",
-                "0",
+                "-1000",
                 "-p",
                 "tcp",
                 "-d",
@@ -613,6 +629,35 @@ class CleanupFirewalldVmPolicyTests(unittest.TestCase):
             run_mock.call_args_list[-1],
             call(["firewall-cmd", "--reload"], sudo=True, check=False),
         )
+
+    def test_fallback_direct_rules_do_not_run_without_configured_ports(self):
+        with patch.object(firewall, "tool_exists", return_value=True), patch.object(
+            firewall, "firewalld_zone_exists", return_value=False
+        ), patch.object(
+            firewall, "firewalld_zone_for_cidr", return_value="demo-zone"
+        ), patch.object(
+            firewall, "find_direct_forward_rules_for_vm", return_value=[]
+        ), patch.object(
+            firewall, "find_forward_port_rules_for_vm", return_value=[]
+        ), patch.object(
+            firewall, "remove_direct_rule"
+        ) as remove_direct_rule_mock, patch.object(
+            firewall, "remove_forward_port_rule"
+        ) as remove_forward_rule_mock, patch.object(
+            firewall, "firewalld_zone_is_empty", return_value=False
+        ), patch.object(firewall, "run"):
+            firewall.cleanup_firewalld_vm_policy(
+                "demo",
+                {
+                    "zone": "demo-zone",
+                    "cidr": "192.168.240.0/24",
+                    "vm_ip": "192.168.240.50",
+                },
+                [],
+            )
+
+        remove_direct_rule_mock.assert_not_called()
+        remove_forward_rule_mock.assert_not_called()
 
     def test_skips_reload_when_no_cleanup_is_needed(self):
         with patch.object(firewall, "tool_exists", return_value=True), patch.object(

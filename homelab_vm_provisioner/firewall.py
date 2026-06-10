@@ -46,6 +46,31 @@ def direct_forward_rule_args(port, vm_ip):
     ]
 
 
+def direct_forward_ports(ports):
+    """Return the guest ports that need direct FORWARD accept rules.
+
+    Args:
+        ports: Configured host-to-guest port forwarding rules.
+
+    Returns:
+        list[dict]: Unique guest port/protocol mappings.
+    """
+    direct_ports = []
+    seen = set()
+
+    for port in ports:
+        proto = port.get("proto", "tcp")
+        guest = str(port["guest"])
+        key = (proto, guest)
+        if key in seen:
+            continue
+
+        seen.add(key)
+        direct_ports.append({"guest": guest, "proto": proto})
+
+    return direct_ports
+
+
 def apply_firewalld_nat_policy(network, trust, ports):
     """Apply host firewalld policy for a NAT-backed VM.
 
@@ -93,6 +118,8 @@ def apply_firewalld_nat_policy(network, trust, ports):
             ],
             sudo=True,
         )
+
+    for port in direct_forward_ports(ports):
         run(
             [
                 "firewall-cmd",
@@ -242,7 +269,7 @@ def find_direct_forward_rules_for_vm(vm_ip):
     for rule in list_direct_rules():
         if len(rule) < 4:
             continue
-        if rule[:4] != ["ipv4", "filter", "FORWARD", "0"]:
+        if rule[:4] != ["ipv4", "filter", "FORWARD", "-1000"]:
             continue
         if "-d" not in rule:
             continue
@@ -324,7 +351,7 @@ def cleanup_firewalld_vm_policy(vm_name, network, ports):
         cleanup_attempted = True
 
     if not direct_rules and vm_ip:
-        for port in ports:
+        for port in direct_forward_ports(ports):
             remove_direct_rule(direct_forward_rule_args(port, vm_ip))
             cleanup_attempted = True
 

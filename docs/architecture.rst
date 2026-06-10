@@ -45,4 +45,5 @@ Configuration
 - ``paths.vm_data_dir`` lets each VM config override its local artifact directory.
 - ``image`` settings in a VM config override the global guest image settings.
 - The default ``image.os_variant`` is ``generic`` to avoid host-specific libosinfo failures.
+- NAT port forwarding installs firewalld direct ``FORWARD`` accept rules at priority ``-1000`` as a host-compatibility workaround.
 - Relative ``paths.vm_data_dir`` values resolve from the project root.
