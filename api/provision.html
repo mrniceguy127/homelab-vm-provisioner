@@ -1,0 +1,678 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="System Module" href="system.html"><link rel="prev" title="Network Module" href="network.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>Provision Module - Homelab VM Provisioner Docs</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=9f7b630f" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f2f2f2;
+  --color-code-foreground: #1e1e1e;
+  --color-background-primary: #0b1020;
+  --color-background-secondary: #111827;
+  --color-background-hover: #172033;
+  --color-background-border: #22314d;
+  --color-foreground-primary: #e5e7eb;
+  --color-foreground-secondary: #cbd5e1;
+  --color-foreground-muted: #94a3b8;
+  --color-brand-primary: #7dd3fc;
+  --color-brand-content: #7dd3fc;
+  --color-link: #7dd3fc;
+  --color-link-hover: #bae6fd;
+  --color-admonition-background: #111827;
+  --color-code-background: #0f172a;
+  --color-code-foreground: #e5e7eb;
+  --color-sidebar-background: #020617;
+  --color-sidebar-item-background--current: #0f172a;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-background-primary: #0b1020;
+  --color-background-secondary: #111827;
+  --color-background-hover: #172033;
+  --color-background-border: #22314d;
+  --color-foreground-primary: #e5e7eb;
+  --color-foreground-secondary: #cbd5e1;
+  --color-foreground-muted: #94a3b8;
+  --color-brand-primary: #7dd3fc;
+  --color-brand-content: #7dd3fc;
+  --color-link: #7dd3fc;
+  --color-link-hover: #bae6fd;
+  --color-admonition-background: #111827;
+  --color-code-background: #0f172a;
+  --color-code-foreground: #e5e7eb;
+  --color-sidebar-background: #020617;
+  --color-sidebar-item-background--current: #0f172a;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #202020;
+  --color-code-foreground: #d0d0d0;
+  --color-background-primary: #0b1020;
+  --color-background-secondary: #111827;
+  --color-background-hover: #172033;
+  --color-background-border: #22314d;
+  --color-foreground-primary: #e5e7eb;
+  --color-foreground-secondary: #cbd5e1;
+  --color-foreground-muted: #94a3b8;
+  --color-brand-primary: #7dd3fc;
+  --color-brand-content: #7dd3fc;
+  --color-link: #7dd3fc;
+  --color-link-hover: #bae6fd;
+  --color-admonition-background: #111827;
+  --color-code-background: #0f172a;
+  --color-code-foreground: #e5e7eb;
+  --color-sidebar-background: #020617;
+  --color-sidebar-item-background--current: #0f172a;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">Homelab VM Provisioner Docs</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  
+  <span class="sidebar-brand-text">Homelab VM Provisioner Docs</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../getting-started.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture</a></li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="index.html">API Reference</a><input aria-label="Toggle navigation of API Reference" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="package.html">Package</a></li>
+<li class="toctree-l2"><a class="reference internal" href="cli.html">CLI Module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="config.html">Config Module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="firewall.html">Firewall Module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="network.html">Network Module</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">Provision Module</a></li>
+<li class="toctree-l2"><a class="reference internal" href="system.html">System Module</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/api/provision.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-homelab_vm_provisioner.provision">
+<span id="provision-module"></span><h1>Provision Module<a class="headerlink" href="#module-homelab_vm_provisioner.provision" title="Link to this heading">¶</a></h1>
+<p>Provisioning helpers for libvirt resources and local artifacts.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.default_nat_bridge_name">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">default_nat_bridge_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#default_nat_bridge_name"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.default_nat_bridge_name" title="Link to this definition">¶</a></dt>
+<dd><p>Return the default libvirt bridge name for a VM NAT network.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vm_name</strong> – VM name.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Stable bridge name within Linux interface length limits.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.legacy_nat_bridge_name">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">legacy_nat_bridge_name</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#legacy_nat_bridge_name"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.legacy_nat_bridge_name" title="Link to this definition">¶</a></dt>
+<dd><p>Return the historical default bridge name for backward cleanup.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vm_name</strong> – VM name.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Older bridge naming scheme based on a truncated VM name.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.admin_private_key_path">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">admin_private_key_path</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">admin_key_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#admin_private_key_path"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.admin_private_key_path" title="Link to this definition">¶</a></dt>
+<dd><p>Return the admin private key path for a VM.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vm_name</strong> – VM name.</p></li>
+<li><p><strong>admin_key_dir</strong> – Optional directory override for generated admin keys.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Private key path inside the admin key directory.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.admin_keypair">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">admin_keypair</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">admin_key_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#admin_keypair"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.admin_keypair" title="Link to this definition">¶</a></dt>
+<dd><p>Ensure the per-VM admin SSH keypair exists.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vm_name</strong> – VM name.</p></li>
+<li><p><strong>admin_key_dir</strong> – Optional directory override for generated admin keys.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Private key path and public key contents.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple[Path, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.render_templates">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">render_templates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">context</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">template_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vm_data_dir</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#render_templates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.render_templates" title="Link to this definition">¶</a></dt>
+<dd><p>Render cloud-init templates for a VM.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>context</strong> – Template variables for the VM.</p></li>
+<li><p><strong>template_name</strong> – Base template name without the <code class="docutils literal notranslate"><span class="pre">-user-data</span></code> suffix.</p></li>
+<li><p><strong>vm_data_dir</strong> – Directory for rendered local VM artifacts.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Rendered <code class="docutils literal notranslate"><span class="pre">user-data</span></code> and <code class="docutils literal notranslate"><span class="pre">meta-data</span></code> file paths.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple[Path, Path]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.ensure_base_image">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">ensure_base_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">image_settings</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#ensure_base_image"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.ensure_base_image" title="Link to this definition">¶</a></dt>
+<dd><p>Ensure the base cloud image exists locally.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>image_settings</strong> – Effective image settings for the VM.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Base image path.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.create_vm_disk">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">create_vm_disk</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">disk_gb</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_img</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#create_vm_disk"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.create_vm_disk" title="Link to this definition">¶</a></dt>
+<dd><p>Create a qcow2 VM disk backed by the base image.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vm_name</strong> – VM name.</p></li>
+<li><p><strong>disk_gb</strong> – Disk size in gibibytes.</p></li>
+<li><p><strong>base_img</strong> – Base image path.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Created or existing VM disk path.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.create_seed_iso">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">create_seed_iso</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">user_data_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_data_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#create_seed_iso"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.create_seed_iso" title="Link to this definition">¶</a></dt>
+<dd><p>Build the cloud-init seed ISO for a VM.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vm_name</strong> – VM name.</p></li>
+<li><p><strong>user_data_path</strong> – Rendered cloud-init <code class="docutils literal notranslate"><span class="pre">user-data</span></code> path.</p></li>
+<li><p><strong>meta_data_path</strong> – Rendered cloud-init <code class="docutils literal notranslate"><span class="pre">meta-data</span></code> path.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Seed ISO path.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Path</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.os_variant_supported">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">os_variant_supported</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">os_variant</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#os_variant_supported"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.os_variant_supported" title="Link to this definition">¶</a></dt>
+<dd><p>Return whether the host recognizes a libvirt OS variant.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>os_variant</strong> – Libvirt OS variant identifier.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> when the variant is listed by <code class="docutils literal notranslate"><span class="pre">virt-install</span> <span class="pre">--osinfo</span> <span class="pre">list</span></code>.
+If the host cannot be queried, validation is skipped and <code class="docutils literal notranslate"><span class="pre">True</span></code> is
+returned.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.validate_os_variant">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">validate_os_variant</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">os_variant</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#validate_os_variant"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.validate_os_variant" title="Link to this definition">¶</a></dt>
+<dd><p>Raise when a libvirt OS variant is not supported by the host.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>os_variant</strong> – Libvirt OS variant identifier.</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the host does not list the supplied OS variant.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.bridge_interface_exists">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">bridge_interface_exists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#bridge_interface_exists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.bridge_interface_exists" title="Link to this definition">¶</a></dt>
+<dd><p>Return whether a Linux bridge interface exists.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>bridge_name</strong> – Bridge interface name.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> when the interface exists.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.cleanup_bridge_interface">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">cleanup_bridge_interface</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bridge_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#cleanup_bridge_interface"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.cleanup_bridge_interface" title="Link to this definition">¶</a></dt>
+<dd><p>Remove a leftover Linux bridge interface.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>bridge_name</strong> – Bridge interface name.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.create_nat_network">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">create_nat_network</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">network</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#create_nat_network"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.create_nat_network" title="Link to this definition">¶</a></dt>
+<dd><p>Create and start a libvirt NAT network when needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vm_name</strong> – VM name.</p></li>
+<li><p><strong>network</strong> – NAT network settings.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.vm_exists">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">vm_exists</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#vm_exists"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.vm_exists" title="Link to this definition">¶</a></dt>
+<dd><p>Return whether a libvirt domain already exists.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vm_name</strong> – VM name.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code> when the domain exists.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.virt_install">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">virt_install</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">network_arg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vm_disk</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed_iso</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">os_variant</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#virt_install"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.virt_install" title="Link to this definition">¶</a></dt>
+<dd><p>Create a VM with <code class="docutils literal notranslate"><span class="pre">virt-install</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vm_name</strong> – VM name.</p></li>
+<li><p><strong>vm</strong> – VM settings from the user config.</p></li>
+<li><p><strong>network_arg</strong> – Rendered <code class="docutils literal notranslate"><span class="pre">virt-install</span> <span class="pre">--network</span></code> argument.</p></li>
+<li><p><strong>vm_disk</strong> – VM disk path.</p></li>
+<li><p><strong>seed_iso</strong> – Seed ISO path.</p></li>
+<li><p><strong>os_variant</strong> – Libvirt OS variant identifier for the guest image.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.cleanup_local_vm_artifacts">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">cleanup_local_vm_artifacts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">admin_private_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vm_data_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#cleanup_local_vm_artifacts"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.cleanup_local_vm_artifacts" title="Link to this definition">¶</a></dt>
+<dd><p>Remove generated local files for a VM.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vm_name</strong> – VM name.</p></li>
+<li><p><strong>admin_private_key</strong> – Optional admin private key path override.</p></li>
+<li><p><strong>vm_data_dir</strong> – Optional VM data directory override.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="homelab_vm_provisioner.provision.cleanup_vm_storage">
+<span class="sig-prename descclassname"><span class="pre">homelab_vm_provisioner.provision.</span></span><span class="sig-name descname"><span class="pre">cleanup_vm_storage</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vm_name</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/homelab_vm_provisioner/provision.html#cleanup_vm_storage"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#homelab_vm_provisioner.provision.cleanup_vm_storage" title="Link to this definition">¶</a></dt>
+<dd><p>Remove VM disk images left in the libvirt image directory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vm_name</strong> – VM name.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="system.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">System Module</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="network.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Network Module</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Provision Module</a><ul>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.default_nat_bridge_name"><code class="docutils literal notranslate"><span class="pre">default_nat_bridge_name()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.legacy_nat_bridge_name"><code class="docutils literal notranslate"><span class="pre">legacy_nat_bridge_name()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.admin_private_key_path"><code class="docutils literal notranslate"><span class="pre">admin_private_key_path()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.admin_keypair"><code class="docutils literal notranslate"><span class="pre">admin_keypair()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.render_templates"><code class="docutils literal notranslate"><span class="pre">render_templates()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.ensure_base_image"><code class="docutils literal notranslate"><span class="pre">ensure_base_image()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.create_vm_disk"><code class="docutils literal notranslate"><span class="pre">create_vm_disk()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.create_seed_iso"><code class="docutils literal notranslate"><span class="pre">create_seed_iso()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.os_variant_supported"><code class="docutils literal notranslate"><span class="pre">os_variant_supported()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.validate_os_variant"><code class="docutils literal notranslate"><span class="pre">validate_os_variant()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.bridge_interface_exists"><code class="docutils literal notranslate"><span class="pre">bridge_interface_exists()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.cleanup_bridge_interface"><code class="docutils literal notranslate"><span class="pre">cleanup_bridge_interface()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.create_nat_network"><code class="docutils literal notranslate"><span class="pre">create_nat_network()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.vm_exists"><code class="docutils literal notranslate"><span class="pre">vm_exists()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.virt_install"><code class="docutils literal notranslate"><span class="pre">virt_install()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.cleanup_local_vm_artifacts"><code class="docutils literal notranslate"><span class="pre">cleanup_local_vm_artifacts()</span></code></a></li>
+<li><a class="reference internal" href="#homelab_vm_provisioner.provision.cleanup_vm_storage"><code class="docutils literal notranslate"><span class="pre">cleanup_vm_storage()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=01f34227"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    </body>
+</html>
