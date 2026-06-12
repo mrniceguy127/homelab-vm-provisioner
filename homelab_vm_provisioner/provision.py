@@ -9,6 +9,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from .config import default_admin_key_dir, default_vm_data_dir, delete_vm_state
 from .constants import (
+    ADMIN_USER,
     IMG_DIR,
     TEMPLATES_DIR,
 )
@@ -141,7 +142,7 @@ def create_vm_disk(vm_name, disk_gb, base_img):
     Returns:
         Path: Created or existing VM disk path.
     """
-    vm_disk = IMG_DIR / f"{vm_name}.qcow2"
+    vm_disk = vm_disk_path(vm_name)
     if not vm_disk.exists():
         run(
             [
@@ -172,7 +173,7 @@ def create_seed_iso(vm_name, user_data_path, meta_data_path):
     Returns:
         Path: Seed ISO path.
     """
-    seed_iso = IMG_DIR / f"{vm_name}-seed.iso"
+    seed_iso = seed_iso_path(vm_name)
     run(
         [
             "cloud-localds",
@@ -326,6 +327,73 @@ def vm_exists(vm_name):
     return result.returncode == 0
 
 
+def vm_disk_path(vm_name):
+    """Return the libvirt disk image path for a VM."""
+    return IMG_DIR / f"{vm_name}.qcow2"
+
+
+def seed_iso_path(vm_name):
+    """Return the libvirt cloud-init seed ISO path for a VM."""
+    return IMG_DIR / f"{vm_name}-seed.iso"
+
+
+def copy_qcow2_image(source_path, target_path):
+    """Copy a qcow2 disk image to a new location via ``qemu-img convert``."""
+    run(["rm", "-f", str(target_path)], sudo=True, check=False)
+    run(
+        [
+            "qemu-img",
+            "convert",
+            "-f",
+            "qcow2",
+            "-O",
+            "qcow2",
+            str(source_path),
+            str(target_path),
+        ],
+        sudo=True,
+    )
+    return target_path
+
+
+def copy_image_artifact(source_path, target_path):
+    """Copy a libvirt-managed artifact such as a seed ISO."""
+    run(["rm", "-f", str(target_path)], sudo=True, check=False)
+    run(["cp", "-f", str(source_path), str(target_path)], sudo=True)
+    return target_path
+
+
+def prepare_cloned_guest_disk(vm_disk, vm_name, vm_users):
+    """Reset guest identity files so a cloned VM boots as a new instance."""
+    unique_users = [user for user in dict.fromkeys([ADMIN_USER, *vm_users]) if user]
+    command = ["virt-customize", "-a", str(vm_disk), "--hostname", vm_name]
+
+    for user in unique_users:
+        command.extend(
+            [
+                "--run-command",
+                f"mkdir -p /home/{user}/.ssh && rm -f /home/{user}/.ssh/authorized_keys",
+            ]
+        )
+
+    command.extend(
+        [
+            "--run-command",
+            "rm -f /etc/ssh/ssh_host_*",
+            "--run-command",
+            "cloud-init clean --logs --machine-id || true",
+            "--run-command",
+            "rm -rf /var/lib/cloud/*",
+            "--run-command",
+            "truncate -s 0 /etc/machine-id || true",
+            "--run-command",
+            "rm -f /var/lib/dbus/machine-id",
+        ]
+    )
+
+    run(command, sudo=True)
+
+
 def virt_install(vm_name, vm, network_arg, vm_disk, seed_iso, os_variant):
     """Create a VM with ``virt-install``.
 
@@ -400,5 +468,5 @@ def cleanup_vm_storage(vm_name):
     Args:
         vm_name: VM name.
     """
-    for path in (IMG_DIR / f"{vm_name}.qcow2", IMG_DIR / f"{vm_name}-seed.iso"):
+    for path in (vm_disk_path(vm_name), seed_iso_path(vm_name)):
         run(["rm", "-f", str(path)], sudo=True, check=False)

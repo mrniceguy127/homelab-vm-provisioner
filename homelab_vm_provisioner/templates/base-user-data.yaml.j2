@@ -70,9 +70,19 @@ write_files:
         exit 1
       fi
 
+{% if setup_script_content %}
+  - path: /usr/local/sbin/vm-post-cloud-init
+    permissions: '0755'
+    content: |
+{{ setup_script_content | indent(6, true) }}
+{% endif %}
+
 runcmd:
   - /usr/local/sbin/vm-package-setup
   - systemctl enable --now firewalld
   - firewall-cmd --permanent --add-service=ssh
   - firewall-cmd --reload
   - systemctl restart ssh
+{% if setup_script_content %}
+  - [sh, -eu, /usr/local/sbin/vm-post-cloud-init]
+{% endif %}

@@ -451,6 +451,7 @@ class CreateTests(unittest.TestCase):
                 "vm_sudo": "false",
                 "packages": ["htop"],
                 "dns_resolvers": ("1.1.1.1", "1.0.0.1"),
+                "setup_script_content": None,
             },
         )
 

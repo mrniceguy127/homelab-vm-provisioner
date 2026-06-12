@@ -21,6 +21,8 @@ DEFAULT_GLOBAL_PATHS = {
     "vm_state_dir": "vm/state",
     "user_key_dir": "vm/keys/users",
     "admin_key_dir": "vm/keys/admin",
+    "script_dir": "vm/scripts",
+    "snapshot_dir": "vm/snapshots",
 }
 
 DEFAULT_IMAGE_SETTINGS = {
@@ -264,6 +266,16 @@ def default_admin_key_dir(global_config=None):
     return global_path_settings(global_config)["admin_key_dir"]
 
 
+def default_script_dir(global_config=None):
+    """Return the default directory for saved setup scripts."""
+    return global_path_settings(global_config)["script_dir"]
+
+
+def default_snapshot_root(global_config=None):
+    """Return the default directory for saved VM restore points."""
+    return global_path_settings(global_config)["snapshot_dir"]
+
+
 def default_vm_data_dir(vm_name, global_config=None):
     """Return the default local artifact directory for a VM.
 
@@ -332,6 +344,35 @@ def resolve_user_key_path(path, global_config=None):
 
     if len(raw_path.parts) == 1:
         return user_key_candidate
+
+    return resolve_project_path(raw_path)
+
+
+def resolve_setup_script_path(path, global_config=None):
+    """Resolve a setup script path.
+
+    Args:
+        path: User-supplied script path.
+        global_config: Optional preloaded global configuration.
+
+    Returns:
+        Path: Existing script path when found, or the most likely intended path.
+    """
+    raw_path = Path(path).expanduser()
+    if raw_path.is_absolute():
+        return raw_path
+
+    candidates = [raw_path, resolve_project_path(raw_path)]
+    script_candidate = default_script_dir(global_config) / raw_path
+    if script_candidate not in candidates:
+        candidates.append(script_candidate)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    if len(raw_path.parts) == 1:
+        return script_candidate
 
     return resolve_project_path(raw_path)
 
