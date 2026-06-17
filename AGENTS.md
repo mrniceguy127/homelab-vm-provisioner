@@ -5,18 +5,19 @@ Integrated monorepo for VM provisioning: Python CLI + Node.js API + React Client
 ## Quick Start
 
 ```bash
-./setup    # Initialize all projects
-./start    # Start dev servers (API + Client)
-./build    # Build all with coverage + docs
+./setup      # Initialize all projects
+./start      # Start dev servers (API + Client)
+./build      # Build all with coverage + docs
+./test-all   # Run all tests with coverage report
 ```
 
 ## Projects
 
-| Project | Type | Testing | Coverage |
-|---------|------|---------|----------|
-| **homelab-vm-provisioner** | Python CLI | unittest | 85% enforced |
-| **homelab-vm-provisioner-api** | Express API | vitest + supertest | 85% required |
-| **homelab-vm-provisioner-client** | React + Vite | vitest + Playwright | Target |
+| Project | Type | Testing |
+|---------|------|---------|
+| **homelab-vm-provisioner** | Python CLI | unittest |
+| **homelab-vm-provisioner-api** | Express API | vitest + supertest |
+| **homelab-vm-provisioner-client** | React + Vite | vitest + Playwright |
 
 ## Architecture
 
@@ -50,13 +51,13 @@ See each project's AGENTS.md for usage instructions and available agents.
 ## Testing Philosophy
 
 1. **TDD**: Write tests first
-2. **Coverage**: 85% minimum (enforced in API & Python)
+2. **Coverage**: 80% minimum (enforced in API & Python)
 3. **Integration**: Test full stack for user-facing features
 4. **E2E**: Playwright for critical workflows (Client)
 
 ## Common Gotchas
 
-**Python**: unittest not pytest, mock libvirt, 85% enforced  
+**Python**: unittest not pytest, mock libvirt, 80% enforced  
 **Node.js**: Use npm scripts not node binary, vitest context differs  
 **React**: ThemeProvider required, Playwright needs dev server running
 

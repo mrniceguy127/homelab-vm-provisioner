@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON_DIR="$ROOT_DIR/homelab-vm-provisioner-api/homelab-vm-provisioner"
+API_DIR="$ROOT_DIR/homelab-vm-provisioner-api"
+CLIENT_DIR="$ROOT_DIR/homelab-vm-provisioner-client"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+RESET='\033[0m'
+CLEAR_LINE='\033[2K'
+
+# Result tracking
+declare -a RESULTS=()
+OVERALL_SUCCESS=true
+
+# Progress spinner
+SPINNER_PID=""
+spinner() {
+    local message=$1
+    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    
+    while true; do
+        local char="${spinstr:i++%${#spinstr}:1}"
+        printf "\r${CLEAR_LINE}${CYAN}${char}${RESET} ${message}..."
+        sleep 0.1
+    done
+}
+
+start_spinner() {
+    spinner "$1" &
+    SPINNER_PID=$!
+}
+
+stop_spinner() {
+    if [[ -n "$SPINNER_PID" ]]; then
+        kill "$SPINNER_PID" 2>/dev/null
+        wait "$SPINNER_PID" 2>/dev/null
+        printf "\r${CLEAR_LINE}"
+        SPINNER_PID=""
+    fi
+}
+
+print_header() {
+    echo ""
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    echo -e "${BOLD}  $1${RESET}"
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+}
+
+print_result() {
+    local project=$1
+    local status=$2
+    local tests=$3
+    local coverage=$4
+    
+    if [[ "$status" == "PASS" ]]; then
+        echo -e "${GREEN}✓${RESET} ${BOLD}$project${RESET}"
+        echo -e "  Tests:    ${GREEN}$tests${RESET}"
+        echo -e "  Coverage: ${GREEN}$coverage${RESET}"
+        RESULTS+=("${GREEN}✓${RESET} $project: ${GREEN}$tests${RESET}, Coverage ${GREEN}$coverage${RESET}")
+    else
+        echo -e "${RED}✗${RESET} ${BOLD}$project${RESET}"
+        echo -e "  Tests:    ${RED}$tests${RESET}"
+        echo -e "  Coverage: ${YELLOW}$coverage${RESET}"
+        RESULTS+=("${RED}✗${RESET} $project: ${RED}$tests${RESET}, Coverage ${YELLOW}$coverage${RESET}")
+        OVERALL_SUCCESS=false
+    fi
+    echo ""
+}
+
+# ============================================
+# Python CLI Tests
+# ============================================
+print_header "1/3 Python CLI (homelab-vm-provisioner)"
+
+cd "$PYTHON_DIR" || exit 1
+
+# Source Python environment
+source "$PYTHON_DIR/scripts/_resolve_python.sh"
+resolve_python_env
+
+# Run tests with coverage
+PYTHON_OUTPUT=$(mktemp)
+start_spinner "Running Python CLI tests"
+if "$PYTHON_BIN" -m coverage run --source=homelab_vm_provisioner -m unittest \
+    tests.test_config tests.test_provision tests.test_managed_nftables \
+    tests.test_reconciler tests.test_main tests.test_network tests.test_system \
+    tests.test_cli tests.test_integration \
+    > "$PYTHON_OUTPUT" 2>&1; then
+    stop_spinner
+    # Check if tests actually passed (no failures/errors)
+    if grep -q "FAILED\|ERROR" "$PYTHON_OUTPUT"; then
+        PYTHON_STATUS="FAIL"
+    else
+        PYTHON_STATUS="PASS"
+    fi
+else
+    stop_spinner
+    PYTHON_STATUS="FAIL"
+fi
+
+# Extract test count
+PYTHON_TESTS=$(grep -E "Ran [0-9]+ tests" "$PYTHON_OUTPUT" | sed -E 's/Ran ([0-9]+) tests.*/\1 tests/')
+if [[ -z "$PYTHON_TESTS" ]]; then
+    PYTHON_TESTS="unknown"
+fi
+
+# Check for failures/errors
+PYTHON_FAILURES=$(grep -E "FAILED \(failures=[0-9]+, errors=[0-9]+\)" "$PYTHON_OUTPUT" | sed -E 's/FAILED \((.*)\)/\1/')
+if [[ -n "$PYTHON_FAILURES" ]]; then
+    PYTHON_TESTS="$PYTHON_TESTS ($PYTHON_FAILURES)"
+elif grep -q "^OK" "$PYTHON_OUTPUT"; then
+    PYTHON_TESTS="$PYTHON_TESTS (all passed)"
+fi
+
+# Get coverage
+PYTHON_COV_OUTPUT=$(mktemp)
+"$PYTHON_BIN" -m coverage report 2>/dev/null | grep "^TOTAL" > "$PYTHON_COV_OUTPUT" || true
+PYTHON_COVERAGE=$(awk '{print $NF}' "$PYTHON_COV_OUTPUT")
+if [[ -z "$PYTHON_COVERAGE" ]]; then
+    PYTHON_COVERAGE="N/A"
+fi
+
+print_result "Python CLI" "$PYTHON_STATUS" "$PYTHON_TESTS" "$PYTHON_COVERAGE"
+rm -f "$PYTHON_OUTPUT" "$PYTHON_COV_OUTPUT"
+
+# ============================================
+# Node.js API Tests
+# ============================================
+print_header "2/3 Node.js API (homelab-vm-provisioner-api)"
+
+cd "$API_DIR" || exit 1
+
+API_OUTPUT=$(mktemp)
+start_spinner "Running Node.js API tests"
+if npm run coverage > "$API_OUTPUT" 2>&1; then
+    stop_spinner
+    API_STATUS="PASS"
+else
+    stop_spinner
+    API_STATUS="FAIL"
+fi
+
+# Extract test results - look for vitest summary
+API_TEST_LINE=$(grep -E "Tests[[:space:]]+[0-9]+ passed" "$API_OUTPUT" | tail -1)
+if [[ -n "$API_TEST_LINE" ]]; then
+    # Extract: "Tests  111 passed (111)"
+    API_TESTS=$(echo "$API_TEST_LINE" | sed -E 's/.*Tests[[:space:]]+([0-9]+) passed.*/\1 tests passed/')
+else
+    # Fallback to file count
+    API_TEST_LINE=$(grep -E "Test Files.*passed" "$API_OUTPUT" | tail -1)
+    if [[ -n "$API_TEST_LINE" ]]; then
+        API_TESTS=$(echo "$API_TEST_LINE" | sed -E 's/.*Test Files[[:space:]]+([0-9]+) passed.*/\1 test files passed/')
+    else
+        API_TESTS="unknown"
+    fi
+fi
+
+# Extract coverage - look for "All files" line
+API_COV_LINE=$(grep -E "All files" "$API_OUTPUT" | tail -1)
+if [[ -n "$API_COV_LINE" ]]; then
+    # Extract percentage from line like: "All files        |   87.13 |    64.28 |   87.22 |   87.13 |"
+    # First percentage after "All files" is the overall line coverage
+    API_COVERAGE=$(echo "$API_COV_LINE" | sed -E 's/.*All files[[:space:]]*\|[[:space:]]*([0-9]+\.[0-9]+).*/\1/')"%"
+else
+    API_COVERAGE="N/A"
+fi
+
+print_result "Node.js API" "$API_STATUS" "$API_TESTS" "$API_COVERAGE"
+rm -f "$API_OUTPUT"
+
+# ============================================
+# React Client Tests
+# ============================================
+print_header "3/3 React Client (homelab-vm-provisioner-client)"
+
+cd "$CLIENT_DIR" || exit 1
+
+CLIENT_OUTPUT=$(mktemp)
+start_spinner "Running React Client tests"
+if npm run coverage > "$CLIENT_OUTPUT" 2>&1; then
+    stop_spinner
+    CLIENT_STATUS="PASS"
+else
+    stop_spinner
+    CLIENT_STATUS="FAIL"
+fi
+
+# Extract test results
+CLIENT_TEST_LINE=$(grep -E "Tests[[:space:]]+[0-9]+ passed" "$CLIENT_OUTPUT" | tail -1)
+if [[ -n "$CLIENT_TEST_LINE" ]]; then
+    CLIENT_TESTS=$(echo "$CLIENT_TEST_LINE" | sed -E 's/.*Tests[[:space:]]+([0-9]+) passed.*/\1 tests passed/')
+else
+    # Fallback to file count
+    CLIENT_TEST_LINE=$(grep -E "Test Files.*passed" "$CLIENT_OUTPUT" | tail -1)
+    if [[ -n "$CLIENT_TEST_LINE" ]]; then
+        CLIENT_TESTS=$(echo "$CLIENT_TEST_LINE" | sed -E 's/.*Test Files[[:space:]]+([0-9]+) passed.*/\1 test files passed/')
+    else
+        CLIENT_TESTS="unknown"
+    fi
+fi
+
+# Extract coverage
+CLIENT_COV_LINE=$(grep -E "All files" "$CLIENT_OUTPUT" | tail -1)
+if [[ -n "$CLIENT_COV_LINE" ]]; then
+    CLIENT_COVERAGE=$(echo "$CLIENT_COV_LINE" | sed -E 's/.*All files[[:space:]]*\|[[:space:]]*([0-9]+\.[0-9]+).*/\1/')"%"
+else
+    CLIENT_COVERAGE="N/A"
+fi
+
+print_result "React Client" "$CLIENT_STATUS" "$CLIENT_TESTS" "$CLIENT_COVERAGE"
+rm -f "$CLIENT_OUTPUT"
+
+# ============================================
+# Summary
+# ============================================
+echo ""
+echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo -e "${BOLD}  SUMMARY${RESET}"
+echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+echo ""
+
+for result in "${RESULTS[@]}"; do
+    echo -e "  $result"
+done
+
+echo ""
+if $OVERALL_SUCCESS; then
+    echo -e "${BOLD}${GREEN}✓ All tests passed!${RESET}"
+    echo ""
+    exit 0
+else
+    echo -e "${BOLD}${RED}✗ Some tests failed${RESET}"
+    echo ""
+    exit 1
+fi

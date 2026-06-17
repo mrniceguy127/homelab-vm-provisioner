@@ -204,6 +204,64 @@ This runs:
 - client Playwright e2e tests
 - client bundle deployment into the API `public/` directory
 
+## Testing
+
+To run tests across all subprojects and see a consolidated coverage report:
+
+```bash
+./test-all
+```
+
+This runs:
+
+- Python CLI tests with coverage (homelab-vm-provisioner)
+- Node.js API tests with coverage (homelab-vm-provisioner-api)
+- React Client tests with coverage (homelab-vm-provisioner-client)
+
+The script displays a color-coded summary showing:
+
+- Test pass/fail status for each project
+- Number of tests run
+- Coverage percentage for each project
+- Overall workspace test health
+
+Example output:
+
+```text
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1/3 Python CLI (homelab-vm-provisioner)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Python CLI
+  Tests:    275 tests (all passed)
+  Coverage: 86%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  2/3 Node.js API (homelab-vm-provisioner-api)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Node.js API
+  Tests:    111 tests passed
+  Coverage: 87.09%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  3/3 React Client (homelab-vm-provisioner-client)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ React Client
+  Tests:    31 tests passed
+  Coverage: 74.64%
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✓ Python CLI: 275 tests (all passed), Coverage 86%
+  ✓ Node.js API: 111 tests passed, Coverage 87.09%
+  ✓ React Client: 31 tests passed, Coverage 74.64%
+
+✓ All tests passed!
+```
+
+For individual project testing, see the respective subproject documentation.
+
 ## Subproject Docs
 
 For service-specific details, see:
