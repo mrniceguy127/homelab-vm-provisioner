@@ -6,9 +6,18 @@ This repository wires together:
 
 - `homelab-vm-provisioner-api/`: the Express API and nested Python provisioner integration
 - `homelab-vm-provisioner-client/`: the React UI
-- root scripts that install dependencies, build both apps, run tests, and deploy the client bundle into the API's `public/` directory
+- `homelab-vm-provisioner-proxy/`: a dead-simple reverse proxy that serves the React client and proxies API requests
+- root scripts that install dependencies, build both apps, run tests, and deploy the client bundle into the proxy's `public/` directory
 
 The sub-repositories already contain their own detailed READMEs. This document covers the root project workflow.
+
+## Architecture
+
+```text
+Browser → Proxy (port 3000) → API (port 3001) → Python CLI → libvirt
+         ↓
+      Static Files (React app)
+```
 
 ## Workspace Layout
 
@@ -16,9 +25,18 @@ The sub-repositories already contain their own detailed READMEs. This document c
 .
 |- homelab-vm-provisioner-api/
 |- homelab-vm-provisioner-client/
+|- homelab-vm-provisioner-proxy/
+|- scripts/
+|  |- build-client-docker
+|  |- build-proxy-docker
+|  |- start-proxy-docker
+|  `- test-docker-mode
+|- .env.example
+|- DOCKER.md
 |- setup
 |- build
-`- start
+|- start
+`- README.md
 ```
 
 ## Requirements
@@ -27,13 +45,15 @@ The sub-repositories already contain their own detailed READMEs. This document c
 - Node.js 18+
 - npm
 - Python 3 with `venv`
+- Docker (optional, for containerized client builds)
 - A Linux libvirt host if you want actual VM lifecycle operations to work end-to-end
 - `sudo` access for the account running the API
 
 Notes:
 
 - Initialize submodules before the first root setup run.
-- The full system-package install path is intended for supported Linux distributions through the nested provisioner setup.
+- The workspace setup installs all system dependencies on supported Linux distributions: git, Node.js 18+, npm, Python, libvirt, qemu, nftables, and other VM provisioning tools.
+- Supported distributions: Ubuntu/Debian, Fedora, RHEL/Rocky/AlmaLinux, Arch Linux.
 - On machines where system packages are already installed, use `./setup --skip-system-packages`.
 
 ## Setup
@@ -52,15 +72,24 @@ Then run:
 ./setup
 ```
 
+For Docker deployment mode:
+
+```bash
+./setup --docker
+```
+
 If you are cloning fresh, `git clone --recurse-submodules <repo>` is the simplest starting point.
 
 What it does:
 
+- installs all system packages: git, Node.js 18+, npm, Python, libvirt, qemu, nftables, cloud-image-utils (on supported Linux distributions)
+- enables and starts the libvirtd service
+- initializes git submodules
 - sets up the nested Python provisioner virtual environment
 - installs API npm dependencies
-- installs client npm dependencies
-- installs Playwright Chromium for client e2e tests
-- runs the root `./build` script
+- installs client npm dependencies (skipped in `--docker` mode unless `--dev` is also specified)
+- installs proxy npm dependencies (skipped in `--docker` mode unless `--dev` is also specified)
+- installs Playwright Chromium for client e2e tests (skipped in `--docker` mode unless `--dev` is also specified)
 
 If your machine already has the required OS packages, use:
 
@@ -70,9 +99,11 @@ If your machine already has the required OS packages, use:
 
 Useful pass-through options supported by the nested provisioner setup:
 
-- `--skip-system-packages`
-- `--dev`
-- `--python <binary>`
+- `--skip-system-packages`: skip system package installation
+- `--dev`: install Python dev dependencies (ruff, coverage, Sphinx)
+- `--python <binary>`: specify Python interpreter
+
+Note: The `--dev` flag installs dev dependencies in the Python provisioner and, when combined with `--docker`, also installs client and proxy npm packages on the host for testing (since tests don't run in containers).
 
 Example:
 
@@ -86,16 +117,99 @@ The root project mostly works out of the box. The main configuration points are 
 
 ### Root scripts
 
-- `./setup`: installs dependencies and runs a full workspace build
-- `./build`: runs API build tasks, client build tasks, client e2e tests, and copies `homelab-vm-provisioner-client/dist/` into `homelab-vm-provisioner-api/public/`
-- `./start`: starts the API and serves the already-built client from the API
+- `./setup`: installs dependencies and configures environments (git submodules, Python venv, npm packages, Playwright)
+- `./setup --docker`: setup for Docker mode (skips client and proxy npm installs since they run in containers)
+- `./setup --dev`: setup with dev dependencies for the Python provisioner
+- `./setup --docker --dev`: Docker mode with dev dependencies installed on host for testing
+- `./setup --client-only`: setup for client-only development (skips API/provisioner, installs only client and proxy)
+- `./build`: builds documentation and app artifacts (no tests)
+- `./build --docker`: builds client static files using Docker instead of local Node.js
+- `./build --client-only`: builds only client (skips API docs), useful for frontend-only development
+- `./scripts/build-client-docker`: standalone script to build only client static files with Docker
+- `./scripts/build-proxy-docker`: builds the proxy Docker image
+- `./test-all`: runs all tests with coverage across Python CLI, API, and client
+- `./start`: starts the API on port 3001 and the proxy on port 3000, serving the already-built client
+- `./start --docker`: starts API locally and proxy in Docker container
+- `./start --client-only`: builds client and starts proxy only (no API), useful for connecting to remote API
+- `./start --client-only --docker`: builds client with Docker and runs proxy in Docker (no API)
+- `./scripts/start-proxy-docker`: runs the proxy in a Docker container (requires static files in `public/`)
+
+### Docker commands
+
+```bash
+# Setup for Docker mode
+./setup --docker
+
+# Start with Docker proxy (API on host)
+./start --docker
+
+# Or use individual scripts
+./scripts/build-client-docker  # Build client static files
+./scripts/build-proxy-docker   # Build proxy image
+./scripts/start-proxy-docker   # Run proxy container
+```
+
+### Client-only workflow (frontend development)
+
+For frontend developers who don't need the full API stack locally:
+
+```bash
+# One-time setup (skips Python provisioner and API dependencies)
+./setup --client-only
+
+# Build and start (connects to remote API)
+./build --client-only
+API_URL=http://192.168.1.100:3001 ./start --client-only
+
+# Or combine with Docker
+./setup --client-only --docker
+./build --client-only --docker
+./start --client-only --docker
+```
+
+**Configuration**: Copy `.env.example` to `.env` and customize:
+```bash
+cp .env.example .env
+# Edit .env to set PROXY_PORT, API_PORT, API_URL, etc.
+```
+
+Or set environment variables directly:
+```bash
+PROXY_PORT=8080 API_PORT=8081 ./start --docker
+```
+
+### Client-only mode (remote API)
+
+Use `--client-only` to run just the frontend proxy without starting the local API. This is useful for:
+- Connecting to a remote API server
+- Frontend development without running the full stack locally
+- Multiple developers sharing a single API instance
+
+```bash
+# Build client and start proxy, connecting to remote API
+API_URL=http://192.168.1.100:3001 ./start --client-only
+
+# Or configure in .env
+echo "API_URL=http://remote-server:3001" >> .env
+./start --client-only
+
+# With Docker proxy
+./start --client-only --docker
+```
+
+The `--client-only` flag:
+1. Builds the client (locally or with Docker if `--docker` is specified)
+2. Deploys static files to the proxy
+3. Starts only the proxy (skips API startup)
+4. Uses `API_URL` environment variable to configure the remote API endpoint
 
 ### Environment variables
 
 | Variable | Default | Used by | Purpose |
 | --- | --- | --- | --- |
 | `PROVISIONER_VENV_DIR` | `homelab-vm-provisioner-api/homelab-vm-provisioner/.venv` | `./setup`, `./start` | Location of the nested Python provisioner virtual environment |
-| `PORT` | `3000` | API via `./start` | HTTP port for the bundled app |
+| `PORT` | `3000` (proxy), `3001` (API) | Proxy and API | HTTP ports for the services |
+| `API_URL` | `http://localhost:3001` | Proxy | Backend API URL for proxying |
 | `HLVMP_PROVISIONER_DIR` | `homelab-vm-provisioner-api/homelab-vm-provisioner` | API | Override the nested provisioner checkout path |
 | `HLVMP_API_RUNTIME_DIR` | `homelab-vm-provisioner-api/runtime` | API | Legacy runtime directory used for startup migration |
 | `HLVMP_NETWORK_POOL_CIDR` | `10.80.0.0/16` | API | Global private pool used to allocate per-network-group subnets |
@@ -115,7 +229,7 @@ VITE_API_BASE_URL=http://localhost:3000 npm --prefix homelab-vm-provisioner-clie
 
 After setup and use, the workspace relies on these paths:
 
-- `homelab-vm-provisioner-api/public/`: deployed client bundle served by the API
+- `homelab-vm-provisioner-proxy/public/`: deployed client bundle served by the reverse proxy
 - `homelab-vm-provisioner-api/homelab-vm-provisioner/configs/`: saved VM YAML configs
 - `homelab-vm-provisioner-api/homelab-vm-provisioner/vm/metadata/`: persisted tenant and network-group records
 - `homelab-vm-provisioner-api/homelab-vm-provisioner/vm/keys/users/`: uploaded SSH public keys
@@ -139,9 +253,10 @@ Managed VM and network-group policy now reconciles through application-owned nft
 
 ### Bundled root-project run
 
-After `./setup` completes, start the workspace from the root with:
+After `./setup` completes, build and start the workspace from the root with:
 
 ```bash
+./build
 ./start
 ```
 

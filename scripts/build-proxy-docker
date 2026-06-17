@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
+PROXY_DIR="$ROOT_DIR/homelab-vm-provisioner-proxy"
+
+log() {
+    printf '==> %s\n' "$*"
+}
+
+# Check if static files exist
+if [[ ! -f "$PROXY_DIR/public/index.html" ]]; then
+    log "Static files not found. Building client with Docker..."
+    "$ROOT_DIR/scripts/build-client-docker"
+fi
+
+log "Building proxy Docker image"
+docker build -t homelab-vm-provisioner-proxy "$PROXY_DIR"
+
+log "Proxy Docker image built successfully"
+log "Image: homelab-vm-provisioner-proxy:latest"

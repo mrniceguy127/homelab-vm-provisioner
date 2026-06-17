@@ -4,12 +4,55 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_DIR="$ROOT_DIR/homelab-vm-provisioner-api"
 CLIENT_DIR="$ROOT_DIR/homelab-vm-provisioner-client"
+PROXY_DIR="$ROOT_DIR/homelab-vm-provisioner-proxy"
 PROVISIONER_DIR="$API_DIR/homelab-vm-provisioner"
-API_PUBLIC_DIR="$API_DIR/public"
 PROVISIONER_VENV_DIR="${PROVISIONER_VENV_DIR:-$PROVISIONER_DIR/.venv}"
+INSTALL_SYSTEM_PACKAGES=1
+INSTALL_DEV=false
+CLIENT_ONLY=false
+
+# Parse arguments
+USE_DOCKER=false
+SETUP_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --docker)
+            USE_DOCKER=true
+            ;;
+        --dev)
+            INSTALL_DEV=true
+            SETUP_ARGS+=("$arg")
+            ;;
+        --skip-system-packages)
+            INSTALL_SYSTEM_PACKAGES=0
+            SETUP_ARGS+=("$arg")
+            ;;
+        --client-only)
+            CLIENT_ONLY=true
+            ;;
+        *)
+            SETUP_ARGS+=("$arg")
+            ;;
+    esac
+done
 
 log() {
     printf '==> %s\n' "$*"
+}
+
+run_sudo() {
+    if [[ "${EUID}" -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+require_cmd() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        printf 'Missing command: %s\n' "$1" >&2
+        exit 1
+    fi
 }
 
 require_path() {
@@ -19,39 +62,215 @@ require_path() {
     fi
 }
 
-require_path "$API_DIR"
+install_system_packages() {
+    if [[ ! -r /etc/os-release ]]; then
+        printf 'Unsupported distro: missing /etc/os-release\n' >&2
+        exit 1
+    fi
+
+    # shellcheck disable=SC1091
+    source /etc/os-release
+
+    case "${ID}" in
+        ubuntu|debian)
+            run_sudo apt update
+            run_sudo apt install -y \
+                git \
+                curl \
+                ca-certificates \
+                gnupg \
+                libvirt-daemon-system \
+                virtinst \
+                qemu-utils \
+                cloud-image-utils \
+                nftables \
+                wget \
+                openssh-client \
+                python3 \
+                python3-pip \
+                python3-venv
+            
+            # Install Node.js 18+ from NodeSource
+            if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 18 ]]; then
+                log "Installing Node.js 18.x from NodeSource"
+                if [[ ! -f /etc/apt/keyrings/nodesource.gpg ]]; then
+                    run_sudo mkdir -p /etc/apt/keyrings
+                    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | run_sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+                fi
+                echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_18.x nodistro main" | run_sudo tee /etc/apt/sources.list.d/nodesource.list
+                run_sudo apt update
+                run_sudo apt install -y nodejs
+            fi
+            ;;
+        fedora)
+            run_sudo dnf install -y \
+                git \
+                curl \
+                ca-certificates \
+                nodejs \
+                npm \
+                qemu-kvm \
+                libvirt \
+                virt-install \
+                qemu-img \
+                cloud-utils \
+                nftables \
+                wget \
+                openssh-clients \
+                python3 \
+                python3-pip
+            ;;
+        rhel|rocky|almalinux)
+            run_sudo dnf install -y epel-release
+            run_sudo dnf install -y \
+                git \
+                curl \
+                ca-certificates \
+                qemu-kvm \
+                libvirt \
+                virt-install \
+                qemu-img \
+                cloud-utils \
+                nftables \
+                wget \
+                openssh-clients \
+                python3 \
+                python3-pip
+            
+            # Install Node.js 18+ from NodeSource
+            if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -d. -f1 | tr -d 'v')" -lt 18 ]]; then
+                log "Installing Node.js 18.x from NodeSource"
+                curl -fsSL https://rpm.nodesource.com/setup_18.x | run_sudo bash -
+                run_sudo dnf install -y nodejs
+            fi
+            ;;
+        arch)
+            run_sudo pacman -Syu --needed \
+                git \
+                curl \
+                ca-certificates \
+                nodejs \
+                npm \
+                qemu-full \
+                libvirt \
+                virt-install \
+                cloud-image-utils \
+                nftables \
+                wget \
+                openssh \
+                python \
+                python-pip
+            ;;
+        *)
+            printf 'Unsupported distro: %s\n' "${ID}" >&2
+            printf 'Please install git, Node.js 18+, npm, and libvirt dependencies manually\n' >&2
+            exit 1
+            ;;
+    esac
+    
+    # Enable and start libvirtd service
+    if command -v systemctl >/dev/null 2>&1; then
+        run_sudo systemctl enable --now libvirtd
+    fi
+}
+
 require_path "$CLIENT_DIR"
-require_path "$PROVISIONER_DIR"
-require_path "$PROVISIONER_DIR/setup"
+require_path "$PROXY_DIR"
 
-if [[ ! -e "$API_DIR/.git" || ! -e "$CLIENT_DIR/.git" || ! -e "$PROVISIONER_DIR/.git" ]]; then
-    log "Initializing git submodules"
-    git -C "$ROOT_DIR" submodule update --init --recursive
+if [[ "$CLIENT_ONLY" == "false" ]]; then
+    require_path "$API_DIR"
+    require_path "$PROVISIONER_DIR"
+    require_path "$PROVISIONER_DIR/setup"
+fi
+
+if [[ "$INSTALL_SYSTEM_PACKAGES" -eq 1 ]]; then
+    if [[ "${EUID}" -ne 0 ]]; then
+        require_cmd sudo
+    fi
+    log "Installing system packages (git, Node.js, npm, Python, libvirt, qemu, nftables)"
+    install_system_packages
+fi
+
+require_cmd git
+require_cmd node
+require_cmd npm
+
+if [[ "$CLIENT_ONLY" == "false" ]]; then
+    if [[ ! -e "$API_DIR/.git" || ! -e "$CLIENT_DIR/.git" || ! -e "$PROVISIONER_DIR/.git" ]]; then
+        log "Initializing git submodules"
+        git -C "$ROOT_DIR" submodule update --init --recursive
+    else
+        log "Git submodules already initialized; preserving local changes"
+    fi
 else
-    log "Git submodules already initialized; preserving local changes"
+    log "Client-only mode: checking required submodules (client, proxy)"
+    if [[ ! -e "$CLIENT_DIR/.git" ]]; then
+        log "Initializing client submodule"
+        git -C "$ROOT_DIR" submodule update --init "$CLIENT_DIR"
+    fi
+    # Proxy is not a submodule, skip check
 fi
 
-if [[ -d "$PROVISIONER_VENV_DIR" && ! -x "$PROVISIONER_VENV_DIR/bin/python" ]]; then
-    log "Removing incomplete provisioner virtualenv"
-    rm -rf "$PROVISIONER_VENV_DIR"
+if [[ "$CLIENT_ONLY" == "false" ]]; then
+    if [[ -d "$PROVISIONER_VENV_DIR" && ! -x "$PROVISIONER_VENV_DIR/bin/python" ]]; then
+        log "Removing incomplete provisioner virtualenv"
+        rm -rf "$PROVISIONER_VENV_DIR"
+    fi
+
+    mkdir -p "$(dirname "$PROVISIONER_VENV_DIR")"
+
+    log "Running nested Python provisioner setup"
+    "$PROVISIONER_DIR/setup" "${SETUP_ARGS[@]}" --venv "$PROVISIONER_VENV_DIR"
+
+    log "Installing API npm packages"
+    npm --prefix "$API_DIR" install
+else
+    log "Client-only mode: skipping Python provisioner and API setup"
 fi
 
-mkdir -p "$(dirname "$PROVISIONER_VENV_DIR")"
-
-log "Running nested Python provisioner setup"
-"$PROVISIONER_DIR/setup" "$@" --venv "$PROVISIONER_VENV_DIR"
-
-log "Installing API npm packages"
-npm --prefix "$API_DIR" install
-
-log "Installing client npm packages"
-npm --prefix "$CLIENT_DIR" install
-
-log "Installing Playwright Chromium"
-node "$CLIENT_DIR/node_modules/@playwright/test/cli.js" install chromium
-
-log "Running workspace build"
-"$ROOT_DIR/build"
+if [[ "$USE_DOCKER" == "true" && "$INSTALL_DEV" == "false" ]]; then
+    log "Docker mode: skipping client npm install (will build in container)"
+    log "Docker mode: skipping proxy npm install (will run in container)"
+else
+    if [[ "$USE_DOCKER" == "true" && "$INSTALL_DEV" == "true" ]]; then
+        log "Installing client npm packages (dev mode for testing)"
+    else
+        log "Installing client npm packages"
+    fi
+    npm --prefix "$CLIENT_DIR" install
+    
+    if [[ "$USE_DOCKER" == "true" && "$INSTALL_DEV" == "true" ]]; then
+        log "Installing proxy npm packages (dev mode for testing)"
+    else
+        log "Installing proxy npm packages"
+    fi
+    npm --prefix "$PROXY_DIR" install
+    
+    log "Installing Playwright Chromium"
+    node "$CLIENT_DIR/node_modules/@playwright/test/cli.js" install chromium
+fi
 
 log "Setup complete"
-printf 'Start the API with ./start\n'
+if [[ "$CLIENT_ONLY" == "true" ]]; then
+    printf 'Build the client with ./build --client-only'
+    if [[ "$USE_DOCKER" == "true" ]]; then
+        printf ' --docker'
+    fi
+    printf '\n'
+    printf 'Then start the proxy with ./start --client-only'
+    if [[ "$USE_DOCKER" == "true" ]]; then
+        printf ' --docker'
+    fi
+    printf '\n'
+else
+    printf 'Build the workspace with ./build'
+    if [[ "$USE_DOCKER" == "true" ]]; then
+        printf ' --docker'
+    fi
+    printf '\n'
+    printf 'Then start the application with ./start'
+    if [[ "$USE_DOCKER" == "true" ]]; then
+        printf ' --docker'
+    fi
+    printf '\n'
+fi

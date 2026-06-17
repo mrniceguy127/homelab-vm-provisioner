@@ -3,12 +3,92 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_DIR="$ROOT_DIR/homelab-vm-provisioner-api"
-API_PUBLIC_INDEX="$API_DIR/public/index.html"
+PROXY_DIR="$ROOT_DIR/homelab-vm-provisioner-proxy"
+PROXY_PUBLIC_INDEX="$PROXY_DIR/public/index.html"
+
+# Source .env file if it exists
+if [[ -f "$ROOT_DIR/.env" ]]; then
+    set -a
+    source "$ROOT_DIR/.env"
+    set +a
+fi
+
 PROVISIONER_VENV_DIR="${PROVISIONER_VENV_DIR:-$API_DIR/homelab-vm-provisioner/.venv}"
 PROVISIONER_PYTHON_BIN="$PROVISIONER_VENV_DIR/bin/python"
 
-if [[ ! -f "$API_PUBLIC_INDEX" ]]; then
-    printf 'Client bundle not found at %s\n' "$API_PUBLIC_INDEX" >&2
+# Parse arguments for Docker mode and client-only mode
+USE_DOCKER=false
+CLIENT_ONLY=false
+PROXY_PORT="${PROXY_PORT:-3000}"
+API_PORT="${API_PORT:-3001}"
+
+# Construct API_URL from API_HOST and API_PORT if not already set
+if [[ -z "${API_URL:-}" ]]; then
+    API_HOST="${API_HOST:-http://172.17.0.1}"
+    API_URL="$API_HOST:$API_PORT"
+fi
+
+for arg in "$@"; do
+    case "$arg" in
+        --docker)
+            USE_DOCKER=true
+            ;;
+        --client-only)
+            CLIENT_ONLY=true
+            ;;
+    esac
+done
+
+# Client-only mode: build client and start proxy only (no API)
+if [[ "$CLIENT_ONLY" == "true" ]]; then
+    printf '==> Client-only mode: building frontend and starting proxy\n'
+    
+    # Build client
+    if [[ "$USE_DOCKER" == "true" ]]; then
+        printf '==> Building client with Docker\n'
+        "$ROOT_DIR/scripts/build-client-docker"
+    else
+        printf '==> Building client locally\n'
+        npm --prefix "$ROOT_DIR/homelab-vm-provisioner-client" run build
+        
+        printf '==> Deploying client bundle to proxy public directory\n'
+        rm -rf "$PROXY_DIR/public"
+        mkdir -p "$PROXY_DIR/public"
+        cp -R "$ROOT_DIR/homelab-vm-provisioner-client/dist/." "$PROXY_DIR/public/"
+    fi
+    
+    # Start proxy only (no API)
+    if [[ "$USE_DOCKER" == "true" ]]; then
+        # Check if Docker image exists
+        if ! docker image inspect homelab-vm-provisioner-proxy:latest >/dev/null 2>&1; then
+            printf 'Docker image not found. Run ./setup --docker or ./scripts/build-proxy-docker first.\n' >&2
+            exit 1
+        fi
+        
+        printf '==> Starting proxy in Docker on port %s\n' "$PROXY_PORT"
+        printf '==> Configure API_URL to point to remote API (current: %s)\n' "$API_URL"
+        printf '==> Access the application at http://localhost:%s\n' "$PROXY_PORT"
+        
+        docker run --rm \
+            --name hlvmp-proxy \
+            -p "$PROXY_PORT:3000" \
+            -e "API_URL=$API_URL" \
+            -v "$PROXY_DIR/public:/app/public:ro" \
+            homelab-vm-provisioner-proxy:latest
+    else
+        printf '==> Starting proxy locally on port %s\n' "$PROXY_PORT"
+        printf '==> Configure API_URL to point to remote API (current: %s)\n' "$API_URL"
+        printf '==> Access the application at http://localhost:%s\n' "$PROXY_PORT"
+        
+        API_URL="$API_URL" PORT="$PROXY_PORT" npm --prefix "$PROXY_DIR" start
+    fi
+    
+    exit 0
+fi
+
+# Normal mode: start both API and proxy
+if [[ ! -f "$PROXY_PUBLIC_INDEX" ]]; then
+    printf 'Client bundle not found at %s\n' "$PROXY_PUBLIC_INDEX" >&2
     printf 'Run ./setup first to build and deploy the client assets.\n' >&2
     exit 1
 fi
@@ -20,4 +100,54 @@ if [[ ! -x "$PROVISIONER_PYTHON_BIN" ]]; then
 fi
 
 export HLVMP_PYTHON_BIN="$PROVISIONER_PYTHON_BIN"
-exec npm --prefix "$API_DIR" start
+
+# Start API on configured port in background
+printf '==> Starting API on port %s\n' "$API_PORT"
+PORT="$API_PORT" npm --prefix "$API_DIR" start &
+API_PID=$!
+
+# Give API a moment to start
+sleep 2
+
+if [[ "$USE_DOCKER" == "true" ]]; then
+    # Check if Docker image exists
+    if ! docker image inspect homelab-vm-provisioner-proxy:latest >/dev/null 2>&1; then
+        printf 'Docker image not found. Run ./setup --docker or ./scripts/build-proxy-docker first.\n' >&2
+        kill "$API_PID" 2>/dev/null || true
+        exit 1
+    fi
+    
+    # Start proxy in Docker container
+    printf '==> Starting proxy in Docker on port %s\n' "$PROXY_PORT"
+    printf '==> Proxying to API at %s\n' "$API_URL"
+    printf '==> Access the application at http://localhost:%s\n' "$PROXY_PORT"
+    
+    docker run --rm \
+        --name hlvmp-proxy \
+        -p "$PROXY_PORT:3000" \
+        -e "API_URL=$API_URL" \
+        -v "$PROXY_DIR/public:/app/public:ro" \
+        homelab-vm-provisioner-proxy:latest &
+    PROXY_PID=$!
+    
+    # Trap to clean up both processes
+    cleanup() {
+        printf '\n==> Stopping services...\n'
+        docker stop hlvmp-proxy 2>/dev/null || true
+        kill "$API_PID" 2>/dev/null || true
+        wait "$API_PID" 2>/dev/null || true
+        wait "$PROXY_PID" 2>/dev/null || true
+    }
+    trap cleanup EXIT INT TERM
+    
+    # Wait for proxy to exit
+    wait "$PROXY_PID"
+else
+    # Start proxy locally with npm
+    printf '==> Starting proxy on port %s\n' "$PROXY_PORT"
+    printf '==> Access the application at http://localhost:%s\n' "$PROXY_PORT"
+    PORT="$PROXY_PORT" npm --prefix "$PROXY_DIR" start
+    
+    # Clean up API process on exit
+    trap "kill $API_PID 2>/dev/null || true" EXIT
+fi

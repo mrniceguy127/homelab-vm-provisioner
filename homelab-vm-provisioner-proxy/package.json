@@ -1,0 +1,21 @@
+{
+  "name": "homelab-vm-provisioner-proxy",
+  "version": "1.0.0",
+  "description": "Reverse proxy for homelab VM provisioner - serves static client and proxies API requests",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "keywords": [
+    "reverse-proxy",
+    "homelab",
+    "vm-provisioner"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "http-proxy-middleware": "^2.0.6"
+  }
+}

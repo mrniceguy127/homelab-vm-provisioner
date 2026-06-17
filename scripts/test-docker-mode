@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Quick test of Docker mode setup and start scripts
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
+
+echo "=== Testing Docker Mode Scripts ==="
+echo ""
+echo "Commands available:"
+echo "  ./setup --docker    # Setup for Docker deployment"
+echo "  ./start --docker    # Start API locally + proxy in Docker"
+echo ""
+echo "Current status:"
+echo ""
+
+# Check Docker
+if command -v docker &> /dev/null; then
+    echo "✓ Docker: installed"
+    if docker info &> /dev/null; then
+        echo "✓ Docker daemon: running"
+    else
+        echo "✗ Docker daemon: not running"
+    fi
+else
+    echo "✗ Docker: not installed"
+fi
+
+echo ""
+
+# Check images
+echo "Docker images:"
+docker images | grep -E "^(REPOSITORY|homelab-vm-provisioner)" || echo "  (none found)"
+
+echo ""
+
+# Check static files
+if [[ -f "$ROOT_DIR/homelab-vm-provisioner-proxy/public/index.html" ]]; then
+    echo "✓ Static files: built"
+else
+    echo "✗ Static files: not built (run ./scripts/build-client-docker)"
+fi
+
+echo ""
+
+# Check proxy npm packages
+if [[ -d "$ROOT_DIR/homelab-vm-provisioner-proxy/node_modules" ]]; then
+    echo "✓ Proxy npm packages: installed (for local mode)"
+else
+    echo "✗ Proxy npm packages: not installed (needed for local mode only)"
+fi
+
+echo ""
+echo "To setup for Docker mode:"
+echo "  ./setup --docker"
+echo ""
+echo "To start in Docker mode:"
+echo "  ./start --docker"
+echo ""
+echo "Environment variables supported:"
+echo "  PROXY_PORT=<port>  # Default: 3000"
+echo "  API_PORT=<port>    # Default: 3001"

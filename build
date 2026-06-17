@@ -4,24 +4,47 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_DIR="$ROOT_DIR/homelab-vm-provisioner-api"
 CLIENT_DIR="$ROOT_DIR/homelab-vm-provisioner-client"
-API_PUBLIC_DIR="$API_DIR/public"
+PROXY_PUBLIC_DIR="$ROOT_DIR/homelab-vm-provisioner-proxy/public"
+
+# Parse arguments
+USE_DOCKER=false
+CLIENT_ONLY=false
+for arg in "$@"; do
+    case "$arg" in
+        --docker)
+            USE_DOCKER=true
+            ;;
+        --client-only)
+            CLIENT_ONLY=true
+            ;;
+    esac
+done
 
 log() {
     printf '==> %s\n' "$*"
 }
 
-log "Running API build (tests, coverage, docs)"
-npm --prefix "$API_DIR" run build
+if [[ "$CLIENT_ONLY" == "false" ]]; then
+    log "Building API (docs)"
+    npm --prefix "$API_DIR" run build
+else
+    log "Client-only mode: skipping API build"
+fi
 
-log "Running client build (tests, coverage, app build, docs)"
-npm --prefix "$CLIENT_DIR" run build
-
-log "Running client Playwright tests"
-npm --prefix "$CLIENT_DIR" run test:e2e
-
-log "Deploying client bundle to API public directory"
-rm -rf "$API_PUBLIC_DIR"
-mkdir -p "$API_PUBLIC_DIR"
-cp -R "$CLIENT_DIR/dist/." "$API_PUBLIC_DIR/"
+if [[ "$USE_DOCKER" == "true" ]]; then
+    log "Building client with Docker"
+    "$ROOT_DIR/scripts/build-client-docker"
+    
+    log "Building client docs (local)"
+    npm --prefix "$CLIENT_DIR" run docs:build
+else
+    log "Building client (app + docs)"
+    npm --prefix "$CLIENT_DIR" run build
+    
+    log "Deploying client bundle to proxy public directory"
+    rm -rf "$PROXY_PUBLIC_DIR"
+    mkdir -p "$PROXY_PUBLIC_DIR"
+    cp -R "$CLIENT_DIR/dist/." "$PROXY_PUBLIC_DIR/"
+fi
 
 log "Workspace build complete"

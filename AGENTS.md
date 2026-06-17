@@ -1,15 +1,28 @@
 # Homelab VM Provisioner Monorepo
 
-Integrated monorepo for VM provisioning: Python CLI + Node.js API + React Client
+Integrated monorepo for VM provisioning: Python CLI + Node.js API + React Client + Reverse Proxy
 
 ## Quick Start
 
 ```bash
-./setup      # Initialize all projects
-./start      # Start dev servers (API + Client)
-./build      # Build all with coverage + docs
-./test-all   # Run all tests with coverage report
+./setup                # Install dependencies (git submodules, venv, npm, Playwright)
+./setup --docker       # Setup for Docker mode (skip client/proxy npm install)
+./setup --dev          # Setup with dev dependencies (for testing)
+./setup --docker --dev # Docker mode + dev dependencies on host (for testing)
+./setup --client-only  # Setup for client-only development (skip API/provisioner)
+./build                # Build all (docs + artifacts, no tests)
+./build --docker       # Build with Docker for client static files
+./build --client-only  # Build only client (skip API, for frontend-only dev)
+./test-all             # Run all tests with coverage report
+./start                # Start proxy (port 3000) and API (port 3001) - local
+./start --docker       # Start API locally, proxy in Docker
+./start --client-only  # Build client and start proxy only (no API, for remote API)
+./scripts/build-client-docker  # Build only client with Docker
+./scripts/build-proxy-docker   # Build proxy Docker image
+./scripts/start-proxy-docker   # Run proxy in Docker container
 ```
+
+**Note**: Copy `.env.example` to `.env` to customize ports and configuration. Or use `PROXY_PORT` and `API_PORT` environment variables.
 
 ## Projects
 
@@ -18,14 +31,18 @@ Integrated monorepo for VM provisioning: Python CLI + Node.js API + React Client
 | **homelab-vm-provisioner** | Python CLI | unittest |
 | **homelab-vm-provisioner-api** | Express API | vitest + supertest |
 | **homelab-vm-provisioner-client** | React + Vite | vitest + Playwright |
+| **homelab-vm-provisioner-proxy** | Reverse Proxy | none (dead simple) |
 
 ## Architecture
 
 ```
-React Client → Express API → Python CLI → libvirt
+Browser → Proxy (port 3000) → API (port 3001) → Python CLI → libvirt
+         ↓
+      Static Files (React app from public/)
 ```
 
 **Component Roles**:
+- **Proxy**: Dead-simple reverse proxy serving static files and proxying API requests
 - **Python CLI**: Core provisioning, VM lifecycle, nftables
 - **Node.js API**: HTTP layer, privilege management, config store
 - **React Client**: User interface, Material-UI

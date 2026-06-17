@@ -1,0 +1,38 @@
+# Environment configuration
+.env
+
+# Build outputs
+homelab-vm-provisioner-proxy/public/
+
+# Node modules
+node_modules/
+
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test outputs
+coverage/
+test-results/
+playwright-report/
+.build/
+
+# Temporary files
+*.tmp
+.cache/

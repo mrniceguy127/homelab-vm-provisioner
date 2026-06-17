@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
+PROXY_DIR="$ROOT_DIR/homelab-vm-provisioner-proxy"
+PROXY_PUBLIC_DIR="$PROXY_DIR/public"
+
+# Source .env file if it exists
+if [[ -f "$ROOT_DIR/.env" ]]; then
+    set -a
+    source "$ROOT_DIR/.env"
+    set +a
+fi
+
+# Parse arguments
+PROXY_PORT="${PROXY_PORT:-3000}"
+API_PORT="${API_PORT:-3001}"
+
+# Construct API_URL from API_HOST and API_PORT if not already set
+if [[ -z "${API_URL:-}" ]]; then
+    API_HOST="${API_HOST:-http://172.17.0.1}"
+    API_URL="$API_HOST:$API_PORT"
+fi
+
+log() {
+    printf '==> %s\n' "$*"
+}
+
+# Check if static files exist
+if [[ ! -f "$PROXY_PUBLIC_DIR/index.html" ]]; then
+    log "Error: Static files not found in $PROXY_PUBLIC_DIR"
+    log "Run ./build-client-docker first to generate static files"
+    exit 1
+fi
+
+# Build proxy image if it doesn't exist
+if ! docker image inspect homelab-vm-provisioner-proxy:latest >/dev/null 2>&1; then
+    log "Proxy image not found. Building..."
+    "$ROOT_DIR/build-proxy-docker"
+fi
+
+log "Starting proxy container"
+log "  Port: $PROXY_PORT"
+log "  API URL: $API_URL"
+log "  Static files: $PROXY_PUBLIC_DIR"
+
+docker run --rm \
+    --name hlvmp-proxy \
+    -p "$PROXY_PORT:3000" \
+    -e "API_URL=$API_URL" \
+    -v "$PROXY_PUBLIC_DIR:/app/public:ro" \
+    homelab-vm-provisioner-proxy:latest
