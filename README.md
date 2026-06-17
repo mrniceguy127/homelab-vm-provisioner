@@ -1,4 +1,4 @@
-# homelab-vm-provisioner-webapp
+# homelab-vm-provisioner
 
 Top-level workspace for the homelab VM provisioner web application.
 

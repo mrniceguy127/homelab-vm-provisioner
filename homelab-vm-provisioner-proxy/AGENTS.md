@@ -99,4 +99,4 @@ See [DOCKER.md](DOCKER.md) for full details.
 
 ## Monorepo Context
 
-This is one component of the homelab-vm-provisioner-webapp monorepo. See the root AGENTS.md and README.md for the full architecture.
+This is one component of the homelab-vm-provisioner monorepo. See the root AGENTS.md and README.md for the full architecture.

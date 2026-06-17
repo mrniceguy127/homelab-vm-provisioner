@@ -42,7 +42,7 @@ Browser → Proxy Container (3000) → API Host (3001) → Python CLI → libvir
 
 ```bash
 git clone --recurse-submodules <repo-url>
-cd homelab-vm-provisioner-webapp
+cd homelab-vm-provisioner
 ```
 
 ### 3. Setup for Docker Mode
