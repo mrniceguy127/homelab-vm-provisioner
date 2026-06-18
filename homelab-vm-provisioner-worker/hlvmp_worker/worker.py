@@ -6,13 +6,14 @@ Long-running process that claims and executes queued jobs from PostgreSQL.
 import logging
 import signal
 import sys
-import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from hlvmp_worker.config import WorkerConfig
 from hlvmp_worker.db_client import DatabaseClient
 from hlvmp_worker.executor import JobExecutionError, JobExecutor
+from hlvmp_worker.socket_server import SocketServer
 
 # Configure logging
 logging.basicConfig(
@@ -41,6 +42,8 @@ class WorkerDaemon:
         self.running = False
         self.active_jobs: set[int] = set()
         self.shutdown_requested = False
+        self.socket_server: Optional[SocketServer] = None
+        self.wake_event = threading.Event()  # Event for socket wakeups
 
     def _handle_signal(self, signum, frame):  # noqa: ARG002
         """Handle shutdown signals.
@@ -51,6 +54,32 @@ class WorkerDaemon:
         """
         logger.info(f"Received signal {signum}, initiating graceful shutdown...")
         self.shutdown_requested = True
+        # Wake the main loop to process shutdown quickly
+        self.wake_event.set()
+
+    def _on_socket_wake(self):
+        """Handle wake message from socket server.
+
+        This is called by the socket server when a wake message is received.
+        It triggers an immediate job scan by setting the wake event.
+        """
+        logger.info("Socket wake received, triggering immediate job scan")
+        self.wake_event.set()
+
+    def _on_socket_health(self) -> dict:
+        """Handle health message from socket server.
+
+        Returns:
+            Health status dictionary
+        """
+        return {
+            "status": "ok",
+            "worker_id": self.config.worker_id,
+            "host_id": self.config.host_id,
+            "concurrency": self.config.concurrency,
+            "active_jobs": len(self.active_jobs),
+            "available_slots": self.config.concurrency - len(self.active_jobs),
+        }
 
     def _log_job_event(
         self, job_id: int, level: str, message: str, metadata: Optional[dict] = None
@@ -173,55 +202,86 @@ class WorkerDaemon:
 
         logger.info("Database microservice is healthy")
 
+        # Start socket server if configured
+        if self.config.socket_path:
+            try:
+                self.socket_server = SocketServer(
+                    self.config.socket_path,
+                    on_wake=self._on_socket_wake,
+                    on_health=self._on_socket_health,
+                )
+                self.socket_server.start()
+                logger.info(f"Socket server enabled at {self.config.socket_path}")
+            except Exception as e:
+                logger.warning(f"Failed to start socket server: {e}")
+                logger.warning("Continuing without socket server, using fallback polling only")
+                self.socket_server = None
+        else:
+            logger.info("Socket server not configured, using fallback polling only")
+
         self.running = True
 
         # Thread pool for concurrent job execution
         with ThreadPoolExecutor(max_workers=self.config.concurrency) as executor:
             futures = []
 
-            while not self.shutdown_requested:
-                # Clean up completed futures
-                futures = [f for f in futures if not f.done()]
+            try:
+                while not self.shutdown_requested:
+                    # Clean up completed futures
+                    futures = [f for f in futures if not f.done()]
 
-                # Check if we can claim more jobs
-                available_slots = self.config.concurrency - len(futures)
+                    # Check if we can claim more jobs
+                    available_slots = self.config.concurrency - len(futures)
 
-                if available_slots > 0:
+                    if available_slots > 0:
+                        try:
+                            # Try to claim a job
+                            job = self.db_client.claim_next_job(
+                                self.config.host_id, self.config.worker_id
+                            )
+
+                            if job:
+                                job_id = job["id"]
+                                self.active_jobs.add(job_id)
+                                logger.debug(f"Claimed job {job_id}, submitting to executor")
+
+                                # Submit job to thread pool
+                                future = executor.submit(self._process_job, job)
+                                futures.append(future)
+
+                                # Clear wake event after claiming a job
+                                self.wake_event.clear()
+                            else:
+                                # No jobs available, wait for wake or poll interval
+                                # Use wake_event.wait() with timeout for efficient waiting
+                                self.wake_event.wait(timeout=self.config.poll_interval)
+                                self.wake_event.clear()
+
+                        except Exception as e:
+                            logger.error(f"Error in main loop: {e}", exc_info=True)
+                            # Wait before retrying on error
+                            self.wake_event.wait(timeout=self.config.poll_interval)
+                            self.wake_event.clear()
+                    else:
+                        # All slots full, wait a bit or for wake
+                        self.wake_event.wait(timeout=1.0)
+                        self.wake_event.clear()
+
+            finally:
+                # Shutdown: wait for active jobs to complete
+                logger.info("Shutdown requested, waiting for active jobs to complete...")
+                logger.info(f"Active jobs: {self.active_jobs}")
+
+                # Wait for all futures to complete
+                for future in as_completed(futures, timeout=300):
                     try:
-                        # Try to claim a job
-                        job = self.db_client.claim_next_job(
-                            self.config.host_id, self.config.worker_id
-                        )
-
-                        if job:
-                            job_id = job["id"]
-                            self.active_jobs.add(job_id)
-                            logger.debug(f"Claimed job {job_id}, submitting to executor")
-
-                            # Submit job to thread pool
-                            future = executor.submit(self._process_job, job)
-                            futures.append(future)
-                        else:
-                            # No jobs available, sleep before next poll
-                            time.sleep(self.config.poll_interval)
-
+                        future.result()
                     except Exception as e:
-                        logger.error(f"Error in main loop: {e}", exc_info=True)
-                        time.sleep(self.config.poll_interval)
-                else:
-                    # All slots full, wait a bit
-                    time.sleep(1.0)
+                        logger.error(f"Job execution error during shutdown: {e}")
 
-            # Shutdown: wait for active jobs to complete
-            logger.info("Shutdown requested, waiting for active jobs to complete...")
-            logger.info(f"Active jobs: {self.active_jobs}")
-
-            # Wait for all futures to complete
-            for future in as_completed(futures, timeout=300):
-                try:
-                    future.result()
-                except Exception as e:
-                    logger.error(f"Job execution error during shutdown: {e}")
+                # Stop socket server
+                if self.socket_server:
+                    self.socket_server.stop()
 
         logger.info("Worker daemon stopped")
         self.running = False

@@ -23,6 +23,7 @@ class WorkerConfig:
         db_service_url: Optional[str] = None,
         db_service_password: Optional[str] = None,
         provisioner_cli_path: Optional[str] = None,
+        socket_path: Optional[str] = None,
     ):
         """Initialize worker configuration.
 
@@ -35,6 +36,7 @@ class WorkerConfig:
             db_service_url: Database microservice URL (preferred)
             db_service_password: Database microservice password
             provisioner_cli_path: Path to provisioner CLI (None = use PATH)
+            socket_path: Unix socket path for wakeup mechanism (None = disabled)
         """
         self.database_url = database_url
         self.host_id = host_id
@@ -44,6 +46,7 @@ class WorkerConfig:
         self.db_service_url = db_service_url
         self.db_service_password = db_service_password
         self.provisioner_cli_path = self._resolve_provisioner_path(provisioner_cli_path)
+        self.socket_path = socket_path
 
     def _generate_worker_id(self) -> str:
         """Generate a stable worker ID based on hostname and PID.
@@ -97,6 +100,7 @@ class WorkerConfig:
             PROVISIONER_CONCURRENCY: Max concurrent jobs (default: 1)
             WORKER_POLL_INTERVAL: Poll interval in seconds (default: 5.0)
             PROVISIONER_CLI_PATH: Path to provisioner CLI (optional)
+            WORKER_SOCKET: Unix socket path for wakeup mechanism (optional)
 
         Returns:
             WorkerConfig instance
@@ -121,6 +125,7 @@ class WorkerConfig:
         concurrency = int(os.environ.get("PROVISIONER_CONCURRENCY", "1"))
         poll_interval = float(os.environ.get("WORKER_POLL_INTERVAL", "5.0"))
         provisioner_cli_path = os.environ.get("PROVISIONER_CLI_PATH", None)
+        socket_path = os.environ.get("WORKER_SOCKET", None)
 
         return cls(
             database_url=database_url,
@@ -131,6 +136,7 @@ class WorkerConfig:
             db_service_url=db_service_url,
             db_service_password=db_service_password,
             provisioner_cli_path=provisioner_cli_path,
+            socket_path=socket_path,
         )
 
     def __repr__(self) -> str:

@@ -275,8 +275,7 @@ class TestWorkerDaemon(unittest.TestCase):
         self.db_client.acquire_resource_locks.assert_not_called()
         self.db_client.release_resource_locks.assert_not_called()
 
-    @patch("hlvmp_worker.worker.time.sleep")
-    def test_run_no_jobs_available(self, mock_sleep):
+    def test_run_no_jobs_available(self):
         """Test run loop when no jobs are available."""
         # Health check passes
         self.db_client.health_check.return_value = True
@@ -285,11 +284,14 @@ class TestWorkerDaemon(unittest.TestCase):
         self.db_client.claim_next_job.return_value = None
 
         # Set shutdown after first iteration
-        def trigger_shutdown(*args):
-            if mock_sleep.call_count >= 1:
+        call_count = [0]
+
+        def trigger_shutdown(host_id, worker_id):
+            call_count[0] += 1
+            if call_count[0] >= 1:
                 self.worker.shutdown_requested = True
 
-        mock_sleep.side_effect = trigger_shutdown
+        self.db_client.claim_next_job.side_effect = trigger_shutdown
 
         self.worker.run()
 
@@ -297,8 +299,7 @@ class TestWorkerDaemon(unittest.TestCase):
         self.assertGreaterEqual(self.db_client.claim_next_job.call_count, 1)
         self.assertFalse(self.worker.running)
 
-    @patch("hlvmp_worker.worker.time.sleep")
-    def test_run_processes_job(self, mock_sleep):
+    def test_run_processes_job(self):
         """Test run loop processes a job."""
         # Health check passes
         self.db_client.health_check.return_value = True
@@ -341,8 +342,7 @@ class TestWorkerDaemon(unittest.TestCase):
 
         self.assertEqual(cm.exception.code, 1)
 
-    @patch("hlvmp_worker.worker.time.sleep")
-    def test_run_handles_exception_in_loop(self, mock_sleep):
+    def test_run_handles_exception_in_loop(self):
         """Test run handles exceptions in main loop gracefully."""
         # Health check passes
         self.db_client.health_check.return_value = True
@@ -355,14 +355,45 @@ class TestWorkerDaemon(unittest.TestCase):
             if call_count[0] == 1:
                 raise RuntimeError("Test error")
             self.worker.shutdown_requested = True
-            return
 
         self.db_client.claim_next_job.side_effect = claim_with_error
 
         self.worker.run()
 
-        # Should have slept after error
-        self.assertGreaterEqual(mock_sleep.call_count, 1)
+        # Should have called claim_next_job multiple times (once with error, once after)
+        self.assertGreaterEqual(self.db_client.claim_next_job.call_count, 2)
+
+    def test_on_socket_wake_sets_event(self):
+        """Test that socket wake callback sets the wake event."""
+        self.assertFalse(self.worker.wake_event.is_set())
+
+        self.worker._on_socket_wake()
+
+        self.assertTrue(self.worker.wake_event.is_set())
+
+    def test_on_socket_health_returns_status(self):
+        """Test that socket health callback returns worker status."""
+        # Add some active jobs
+        self.worker.active_jobs.add(1)
+        self.worker.active_jobs.add(2)
+
+        health = self.worker._on_socket_health()
+
+        self.assertEqual(health["status"], "ok")
+        self.assertEqual(health["worker_id"], "test-worker")
+        self.assertEqual(health["host_id"], "test-host")
+        self.assertEqual(health["concurrency"], 2)
+        self.assertEqual(health["active_jobs"], 2)
+        self.assertEqual(health["available_slots"], 0)
+
+    def test_signal_handler_triggers_wake_event(self):
+        """Test that signal handler triggers wake event for fast shutdown."""
+        self.assertFalse(self.worker.wake_event.is_set())
+
+        self.worker._handle_signal(signal.SIGTERM, None)
+
+        self.assertTrue(self.worker.shutdown_requested)
+        self.assertTrue(self.worker.wake_event.is_set())
 
 
 if __name__ == "__main__":

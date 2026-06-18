@@ -276,10 +276,15 @@ test_python_cli() {
         PYTHON_TESTS="$PYTHON_TESTS (all passed)"
     fi
 
-    # Get coverage
+    # Get coverage and check threshold
     PYTHON_COV_OUTPUT=$(mktemp)
-    "$PYTHON_BIN" -m coverage report 2>/dev/null | grep "^TOTAL" > "$PYTHON_COV_OUTPUT" || true
-    PYTHON_COVERAGE=$(awk '{print $NF}' "$PYTHON_COV_OUTPUT")
+    if ! "$PYTHON_BIN" -m coverage report > "$PYTHON_COV_OUTPUT" 2>&1; then
+        # Coverage report failed (likely due to fail_under threshold)
+        if grep -q "Coverage failure:" "$PYTHON_COV_OUTPUT"; then
+            PYTHON_STATUS="FAIL"
+        fi
+    fi
+    PYTHON_COVERAGE=$(grep "^TOTAL" "$PYTHON_COV_OUTPUT" | awk '{print $NF}')
     if [[ -z "$PYTHON_COVERAGE" ]]; then
         PYTHON_COVERAGE="N/A"
     fi
@@ -346,10 +351,15 @@ test_python_worker() {
         WORKER_TESTS="$WORKER_TESTS (all passed)"
     fi
 
-    # Get coverage
+    # Get coverage and check threshold
     WORKER_COV_OUTPUT=$(mktemp)
-    python -m coverage report --rcfile "$WORKER_DIR/pyproject.toml" 2>/dev/null | grep "^TOTAL" > "$WORKER_COV_OUTPUT" || true
-    WORKER_COVERAGE=$(awk '{print $NF}' "$WORKER_COV_OUTPUT")
+    if ! python -m coverage report --rcfile "$WORKER_DIR/pyproject.toml" > "$WORKER_COV_OUTPUT" 2>&1; then
+        # Coverage report failed (likely due to fail_under threshold)
+        if grep -q "Coverage failure:" "$WORKER_COV_OUTPUT"; then
+            WORKER_STATUS="FAIL"
+        fi
+    fi
+    WORKER_COVERAGE=$(grep "^TOTAL" "$WORKER_COV_OUTPUT" | awk '{print $NF}')
     if [[ -z "$WORKER_COVERAGE" ]]; then
         WORKER_COVERAGE="N/A"
     fi
