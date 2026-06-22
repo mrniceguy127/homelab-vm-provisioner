@@ -312,9 +312,12 @@ class DatabaseClient:
                 return None
             raise
 
-    def upsert_vm_runtime_state(self, vm_name: str, state: dict[str, Any]) -> dict[str, Any]:
-        """Persist VM runtime state."""
-        response = self._request("POST", f"/vm-runtime-state/{vm_name}", {"state": state})
+    def upsert_vm_runtime_state(self, vm_name: str, state: dict[str, Any], observation_source: Optional[str] = None) -> dict[str, Any]:
+        """Persist VM runtime state with optional observation source."""
+        response = self._request("POST", f"/vm-runtime-state/{vm_name}", {
+            "state": state,
+            "observationSource": observation_source,
+        })
         return response["runtimeState"]
 
     def delete_vm_runtime_state(self, vm_name: str) -> Optional[dict[str, Any]]:
@@ -358,6 +361,70 @@ class DatabaseClient:
         try:
             response = self._request("DELETE", f"/vm-snapshots/{vm_name}/{snapshot_id}")
             return response.get("snapshot")
+        except RuntimeError as e:
+            if "404" in str(e):
+                return None
+            raise
+
+    def store_vm_log_snapshot(
+        self, vm_name: str, log_content: str, line_count: int, collected_by: str = "worker"
+    ) -> dict[str, Any]:
+        """Store VM log snapshot.
+
+        Args:
+            vm_name: VM name
+            log_content: Log content text
+            line_count: Number of lines in log
+            collected_by: Source identifier (default: "worker")
+
+        Returns:
+            Stored log snapshot
+        """
+        return self._request(
+            "POST",
+            f"/vm-logs/{vm_name}",
+            {
+                "logContent": log_content,
+                "lineCount": line_count,
+                "collectedBy": collected_by,
+            },
+        )
+
+    def get_vm_log_snapshot(self, vm_name: str) -> Optional[dict[str, Any]]:
+        """Get VM log snapshot.
+
+        Args:
+            vm_name: VM name
+
+        Returns:
+            Log snapshot or None if not found
+        """
+        try:
+            return self._request("GET", f"/vm-logs/{vm_name}")
+        except RuntimeError as e:
+            if "404" in str(e):
+                return None
+            raise
+
+    def list_vm_log_snapshots(self) -> list[dict[str, Any]]:
+        """List all VM log snapshots.
+
+        Returns:
+            List of log snapshots
+        """
+        return self._request("GET", "/vm-logs")
+
+    def delete_vm_log_snapshot(self, vm_name: str) -> Optional[dict[str, Any]]:
+        """Delete VM log snapshot.
+
+        Args:
+            vm_name: VM name
+
+        Returns:
+            Deletion result or None if not found
+        """
+        try:
+            return self._request("DELETE", f"/vm-logs/{vm_name}")
         except RuntimeError as e:
             if "404" in str(e):
                 return None

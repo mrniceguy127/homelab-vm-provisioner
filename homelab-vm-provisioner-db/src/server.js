@@ -287,7 +287,9 @@ app.get('/vm-runtime-state/:vmName', async (req, res, next) => {
 
 app.post('/vm-runtime-state/:vmName', async (req, res, next) => {
   try {
-    const runtimeState = await repository.upsertVmRuntimeState(req.params.vmName, req.body.state || {});
+    const { vmName } = req.params;
+    const { state, observationSource } = req.body;
+    const runtimeState = await repository.upsertVmRuntimeState(vmName, state || {}, observationSource);
     res.status(201).json({ runtimeState });
   } catch (error) {
     next(error);
@@ -347,6 +349,73 @@ app.delete('/vm-snapshots/:vmName/:snapshotId', async (req, res, next) => {
       return res.status(404).json({ error: 'VM snapshot not found' });
     }
     res.json({ snapshot });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// VM Log Snapshots
+app.get('/vm-logs', async (_req, res, next) => {
+  try {
+    const snapshots = await repository.listVmLogSnapshots();
+    res.json(snapshots);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/vm-logs/:vmName', async (req, res, next) => {
+  try {
+    const snapshot = await repository.getVmLogSnapshot(req.params.vmName);
+    
+    if (!snapshot) {
+      return res.status(404).json({ 
+        error: 'VM log snapshot not found',
+        vm_name: req.params.vmName 
+      });
+    }
+    
+    res.json(snapshot);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/vm-logs/:vmName', async (req, res, next) => {
+  try {
+    const { logContent, lineCount, collectedBy } = req.body;
+    
+    if (!logContent || typeof lineCount !== 'number') {
+      return res.status(400).json({ 
+        error: 'Missing required fields: logContent, lineCount' 
+      });
+    }
+    
+    const snapshot = await repository.storeVmLogSnapshot(
+      req.params.vmName,
+      logContent,
+      lineCount,
+      collectedBy || 'worker'
+    );
+    
+    res.json(snapshot);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/vm-logs/:vmName', async (req, res, next) => {
+  try {
+    const deleted = await repository.deleteVmLogSnapshot(req.params.vmName);
+    
+    if (!deleted) {
+      return res.status(404).json({ 
+        error: 'VM log snapshot not found',
+        vm_name: req.params.vmName 
+      });
+    }
+    
+    res.json({ deleted: true });
   } catch (error) {
     next(error);
   }

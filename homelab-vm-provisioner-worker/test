@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+on_error() {
+    printf 'Verification failed. If this is a fresh checkout, run ./setup --dev first.\n' >&2
+}
+
+trap on_error ERR
+
+log() {
+    printf '==> %s\n' "$*"
+}
+
+run_step() {
+    local label="$1"
+    local script_path="$2"
+
+    log "$label"
+    bash "$script_path"
+}
+
+run_step "Running Ruff" "$ROOT_DIR/scripts/lint"
+run_step "Running Python tests (unit + integration)" "$ROOT_DIR/scripts/test"
+run_step "Running coverage" "$ROOT_DIR/scripts/coverage"
+
+log "Full verification complete"

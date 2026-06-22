@@ -519,15 +519,17 @@ export class JobRepository {
     return result.rows[0] ? this._deserializeVmDefinition(result.rows[0]) : null;
   }
 
-  async upsertVmRuntimeState(vmName, state) {
+  async upsertVmRuntimeState(vmName, state, observationSource = null) {
     const result = await this.pool.query(
-      `INSERT INTO vm_runtime_state (vm_name, state)
-       VALUES ($1, $2)
+      `INSERT INTO vm_runtime_state (vm_name, state, observed_at, observation_source)
+       VALUES ($1, $2, NOW(), $3)
        ON CONFLICT (vm_name) DO UPDATE
        SET state = EXCLUDED.state,
+           observed_at = NOW(),
+           observation_source = EXCLUDED.observation_source,
            updated_at = NOW()
        RETURNING *`,
-      [vmName, JSON.stringify(state || {})]
+      [vmName, JSON.stringify(state || {}), observationSource]
     );
 
     return this._deserializeVmRuntimeState(result.rows[0]);
@@ -738,6 +740,8 @@ export class JobRepository {
     return {
       vm_name: row.vm_name,
       state: row.state,
+      observed_at: row.observed_at,
+      observation_source: row.observation_source,
       created_at: row.created_at,
       updated_at: row.updated_at,
     };
@@ -750,6 +754,95 @@ export class JobRepository {
       metadata: row.metadata,
       created_at: row.created_at,
       updated_at: row.updated_at,
+    };
+  }
+
+  /**
+   * Store or update VM log snapshot
+   * 
+   * @param {string} vmName - VM name
+   * @param {string} logContent - Log content
+   * @param {number} lineCount - Number of lines
+   * @param {string} collectedBy - Source identifier
+   * @returns {Promise<object>} Stored log snapshot
+   */
+  async storeVmLogSnapshot(vmName, logContent, lineCount, collectedBy = 'worker') {
+    // Enforce 1MB size limit per VM log snapshot
+    const MAX_LOG_SIZE = 1024 * 1024; // 1MB in bytes
+    const logSizeBytes = Buffer.byteLength(logContent, 'utf8');
+    
+    if (logSizeBytes > MAX_LOG_SIZE) {
+      throw new Error(`Log content exceeds 1MB limit (${logSizeBytes} bytes). Truncate before storing.`);
+    }
+    
+    const result = await this.pool.query(
+      `INSERT INTO vm_log_snapshots (vm_name, log_content, line_count, collected_by, snapshot_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (vm_name) DO UPDATE
+       SET log_content = EXCLUDED.log_content,
+           line_count = EXCLUDED.line_count,
+           collected_by = EXCLUDED.collected_by,
+           snapshot_at = NOW()
+       RETURNING *`,
+      [vmName, logContent, lineCount, collectedBy]
+    );
+
+    return this._deserializeVmLogSnapshot(result.rows[0]);
+  }
+
+  /**
+   * Get VM log snapshot
+   * 
+   * @param {string} vmName - VM name
+   * @returns {Promise<object|null>} Log snapshot or null
+   */
+  async getVmLogSnapshot(vmName) {
+    const result = await this.pool.query(
+      'SELECT * FROM vm_log_snapshots WHERE vm_name = $1',
+      [vmName]
+    );
+
+    return result.rows.length > 0 ? this._deserializeVmLogSnapshot(result.rows[0]) : null;
+  }
+
+  /**
+   * List all VM log snapshots
+   * 
+   * @returns {Promise<Array>} All log snapshots
+   */
+  async listVmLogSnapshots() {
+    const result = await this.pool.query(
+      'SELECT * FROM vm_log_snapshots ORDER BY snapshot_at DESC'
+    );
+
+    return result.rows.map((row) => this._deserializeVmLogSnapshot(row));
+  }
+
+  /**
+   * Delete VM log snapshot
+   * 
+   * @param {string} vmName - VM name
+   * @returns {Promise<boolean>} True if deleted
+   */
+  async deleteVmLogSnapshot(vmName) {
+    const result = await this.pool.query(
+      'DELETE FROM vm_log_snapshots WHERE vm_name = $1',
+      [vmName]
+    );
+
+    return result.rowCount > 0;
+  }
+
+  _deserializeVmLogSnapshot(row) {
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      vm_name: row.vm_name,
+      snapshot_at: row.snapshot_at,
+      log_content: row.log_content,
+      line_count: row.line_count,
+      collected_by: row.collected_by,
     };
   }
 }

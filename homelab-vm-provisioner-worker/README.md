@@ -25,9 +25,11 @@ The worker daemon is a standalone Python service that claims and executes queued
 cp .env.example .env
 # Edit .env and set HOST_ID, DB_SERVICE_URL, DB_SERVICE_PASSWORD
 
-# Start worker
+# Start worker (requires sudo for libvirt/nftables access)
 ./start
 ```
+
+**Note**: The worker requires sudo access to execute provisioner CLI operations that interact with libvirt and nftables. You will be prompted for your sudo password on startup.
 
 ## Configuration
 

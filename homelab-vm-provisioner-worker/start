@@ -88,6 +88,9 @@ echo "  Concurrency: ${PROVISIONER_CONCURRENCY:-1}"
 echo "  Poll interval: ${WORKER_POLL_INTERVAL:-5.0}s"
 echo "  Provisioner CLI: ${PROVISIONER_CLI_PATH:-PATH lookup}"
 echo ""
+echo "Note: Worker requires sudo access for libvirt and nftables operations."
+echo "      You will be prompted for your sudo password on startup."
+echo ""
 
 # Run worker daemon
 exec python3 -m hlvmp_worker.worker

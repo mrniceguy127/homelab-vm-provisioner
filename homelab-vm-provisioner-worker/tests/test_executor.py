@@ -137,9 +137,8 @@ class TestJobExecutor(unittest.TestCase):
     def test_load_service_mode_module_missing_package_raises_job_execution_error(self):
         with patch("hlvmp_worker.executor.Path.exists", return_value=True), patch(
             "hlvmp_worker.executor.import_module", side_effect=ModuleNotFoundError("missing")
-        ):
-            with self.assertRaises(JobExecutionError) as context:
-                JobExecutor("/fake/path/to/cli", Mock())
+        ), self.assertRaises(JobExecutionError) as context:
+            JobExecutor("/fake/path/to/cli", Mock())
 
         self.assertIn("Could not import provisioner service module", str(context.exception))
         self.assertFalse(context.exception.retriable)
@@ -430,6 +429,87 @@ class TestJobExecutor(unittest.TestCase):
 
         self.assertIn("Unsupported", str(context.exception))
         self.assertFalse(context.exception.retriable)
+
+    @patch("hlvmp_worker.executor.Path")
+    def test_execute_collect_vm_logs_success(self, mock_path):
+        """Test collecting VM logs successfully."""
+        mock_log_file = Mock()
+        mock_log_file.exists.return_value = True
+
+        mock_file_handle = Mock()
+        mock_file_handle.readlines.return_value = [
+            "Line 1\n",
+            "Line 2\n",
+            "Line 3\n",
+        ]
+        mock_log_file.open.return_value.__enter__ = Mock(return_value=mock_file_handle)
+        mock_log_file.open.return_value.__exit__ = Mock(return_value=False)
+
+        mock_path.return_value = mock_log_file
+
+        result = self.executor.execute_job({
+            "type": "collect_vm_logs",
+            "payload": {"vmName": "test-vm", "lines": 10}
+        })
+
+        self.assertEqual(result["vm_name"], "test-vm")
+        self.assertEqual(result["lines_collected"], 3)
+        self.assertTrue(result["log_exists"])
+        self.db_client.store_vm_log_snapshot.assert_called_once()
+
+    @patch("hlvmp_worker.executor.Path")
+    def test_execute_collect_vm_logs_no_log_file(self, mock_path):
+        """Test collecting VM logs when log file doesn't exist."""
+        mock_log_file = Mock()
+        mock_log_file.exists.return_value = False
+        mock_path.return_value = mock_log_file
+
+        result = self.executor.execute_job({
+            "type": "collect_vm_logs",
+            "payload": {"vmName": "test-vm"}
+        })
+
+        self.assertEqual(result["vm_name"], "test-vm")
+        self.assertEqual(result["lines_collected"], 0)
+        self.assertFalse(result["log_exists"])
+
+    def test_execute_collect_vm_logs_missing_vm_name(self):
+        """Test collecting VM logs without VM name."""
+        with self.assertRaises(JobExecutionError) as context:
+            self.executor.execute_job({
+                "type": "collect_vm_logs",
+                "payload": {}
+            })
+
+        self.assertIn("vmName", str(context.exception))
+        self.assertFalse(context.exception.retriable)
+
+    @patch("hlvmp_worker.executor.Path")
+    def test_execute_collect_vm_logs_size_limit(self, mock_path):
+        """Test collecting VM logs with size truncation."""
+        # Create large log content that exceeds 1MB
+        large_line = "x" * 100000  # 100KB line
+        mock_log_file = Mock()
+        mock_log_file.exists.return_value = True
+
+        mock_file_handle = Mock()
+        mock_file_handle.readlines.return_value = [large_line + "\n"] * 20  # 2MB total
+        mock_log_file.open.return_value.__enter__ = Mock(return_value=mock_file_handle)
+        mock_log_file.open.return_value.__exit__ = Mock(return_value=False)
+
+        mock_path.return_value = mock_log_file
+
+        result = self.executor.execute_job({
+            "type": "collect_vm_logs",
+            "payload": {"vmName": "test-vm"}
+        })
+
+        self.assertEqual(result["vm_name"], "test-vm")
+        self.assertTrue(result["log_exists"])
+        # Verify truncation happened
+        call_args = self.db_client.store_vm_log_snapshot.call_args
+        log_content = call_args.kwargs["log_content"]
+        self.assertLessEqual(len(log_content.encode("utf-8")), 1024 * 1024)
 
 
 if __name__ == "__main__":

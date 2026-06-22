@@ -4,9 +4,9 @@ Maps job types to provisioner Python service functions and executes them
 in-process on the host.
 """
 
+import sys
 from importlib import import_module
 from pathlib import Path
-import sys
 from typing import Any, Callable
 
 from .db_client import DatabaseClient
@@ -46,9 +46,11 @@ class JobExecutor:
             "start_vm": self._execute_start_vm,
             "stop_vm": self._execute_stop_vm,
             "reconcile_vm_networking": self._execute_reconcile_networking,
+            "refresh_vm_runtime_state": self._execute_refresh_runtime_state,
             "snapshot_create": self._execute_snapshot_create,
             "snapshot_restore": self._execute_snapshot_restore,
             "snapshot_delete": self._execute_snapshot_delete,
+            "collect_vm_logs": self._execute_collect_vm_logs,
         }
 
     def _load_service_mode_module(self):
@@ -265,7 +267,7 @@ class JobExecutor:
 
         vm_definition = self._load_vm_definition(vm_name)
         reconcile_payload = self._build_reconcile_payload(False)
-        created = self.service_mode.create_vm(
+        self.service_mode.create_vm(
             self._build_service_config(vm_definition),
             reconcile_payload=reconcile_payload,
         )
@@ -330,7 +332,7 @@ class JobExecutor:
 
         vm_definition = self._load_vm_definition(target_vm_name)
         reconcile_payload = self._build_reconcile_payload(False)
-        created = self.service_mode.clone_vm(
+        self.service_mode.clone_vm(
             source_vm_name,
             self._build_service_config(vm_definition),
             reconcile_payload=reconcile_payload,
@@ -426,6 +428,34 @@ class JobExecutor:
             "message": "Network reconciliation completed successfully",
         }
 
+    def _execute_refresh_runtime_state(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Execute runtime state refresh job.
+
+        Args:
+            payload: Job payload with vmName
+
+        Returns:
+            Job result data with refreshed runtime state
+
+        Raises:
+            JobExecutionError: If refresh fails
+        """
+        vm_name = payload.get("vmName")
+        if not vm_name:
+            raise JobExecutionError(
+                "Missing required field: vmName", retriable=False
+            )
+
+        runtime_state = self.service_mode.refresh_vm_runtime_state(vm_name)
+
+        return {
+            "success": True,
+            "vmName": vm_name,
+            "runtimeState": runtime_state,
+            "observationSource": "explicit_refresh",
+            "message": "Runtime state refreshed successfully",
+        }
+
     def _execute_snapshot_create(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Execute snapshot creation job.
 
@@ -492,7 +522,7 @@ class JobExecutor:
             )
 
         reconcile_payload = self._build_reconcile_payload(False)
-        restore_result = self.service_mode.restore_snapshot_record(
+        self.service_mode.restore_snapshot_record(
             vm_name,
             snapshot_id,
             snapshot_record.get("metadata") or snapshot_record,
@@ -550,3 +580,89 @@ class JobExecutor:
             "deleteSnapshotRecord": True,
             "message": "Snapshot deleted successfully",
         }
+
+    def _execute_collect_vm_logs(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Collect VM logs from libvirt and store in database.
+
+        Enforces 1MB size limit per VM log snapshot.
+
+        Args:
+            payload: Job payload with vmName and optional lines count
+
+        Returns:
+            Job result data
+
+        Raises:
+            JobExecutionError: If log collection fails
+        """
+        vm_name = payload.get("vmName")
+        lines = payload.get("lines", 500)
+        max_size_bytes = 1024 * 1024  # 1MB limit
+
+        if not vm_name:
+            raise JobExecutionError("Missing required field: vmName", retriable=False)
+
+        # Read logs from libvirt
+        log_path = Path(f"/var/log/libvirt/qemu/{vm_name}.log")
+
+        if not log_path.exists():
+            # No log file - VM might not exist or hasn't been started
+            return {
+                "vm_name": vm_name,
+                "lines_collected": 0,
+                "log_exists": False,
+                "observation_source": "worker_log_collection",
+            }
+
+        try:
+            # Read last N lines efficiently while respecting size limit
+            with log_path.open("r", encoding="utf-8", errors="replace") as f:
+                all_lines = f.readlines()
+                log_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+
+            # Enforce 1MB size limit by truncating from the beginning if needed
+            log_content = "".join(log_lines)
+            content_size = len(log_content.encode("utf-8"))
+
+            if content_size > max_size_bytes:
+                # Truncate to fit within 1MB, removing lines from the beginning
+                truncated_lines = []
+                current_size = 0
+
+                for line in reversed(log_lines):
+                    line_size = len(line.encode("utf-8"))
+                    if current_size + line_size > max_size_bytes:
+                        break
+                    truncated_lines.insert(0, line)
+                    current_size += line_size
+
+                log_lines = truncated_lines
+                log_content = "".join(log_lines)
+
+            line_count = len(log_lines)
+
+            # Store in database
+            self.db_client.store_vm_log_snapshot(
+                vm_name=vm_name,
+                log_content=log_content,
+                line_count=line_count,
+                collected_by="worker",
+            )
+
+            return {
+                "vm_name": vm_name,
+                "lines_collected": line_count,
+                "log_exists": True,
+                "size_bytes": len(log_content.encode("utf-8")),
+                "observation_source": "worker_log_collection",
+            }
+        except PermissionError as e:
+            raise JobExecutionError(
+                f"Permission denied reading log file: {log_path}. Worker needs sudo or file read access.",
+                retriable=True,
+            ) from e
+        except Exception as e:
+            raise JobExecutionError(
+                f"Failed to collect logs for {vm_name}: {e}",
+                retriable=True,
+            ) from e

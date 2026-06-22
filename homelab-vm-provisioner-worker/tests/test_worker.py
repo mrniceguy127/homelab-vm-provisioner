@@ -2,7 +2,7 @@
 
 import signal
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from hlvmp_worker.config import WorkerConfig
 from hlvmp_worker.db_client import DatabaseClient
@@ -15,7 +15,7 @@ class TestWorkerDaemon(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        with patch("hlvmp_worker.config.shutil.which", return_value="/usr/bin/vmctl"):
+        with patch("hlvmp_worker.config.Path.exists", return_value=True):
             self.config = WorkerConfig(
                 database_url="postgresql://localhost/test",
                 host_id="test-host",
@@ -24,6 +24,7 @@ class TestWorkerDaemon(unittest.TestCase):
                 poll_interval=1.0,
                 db_service_url="http://localhost:3002",
                 db_service_password="test-password",
+                provisioner_cli_path="/usr/bin/vmctl",  # Required for standalone microservice
             )
         self.db_client = Mock(spec=DatabaseClient)
         self.executor = Mock(spec=JobExecutor)
@@ -283,8 +284,8 @@ class TestWorkerDaemon(unittest.TestCase):
 
         self.worker._refresh_runtime_state_caches()
 
-        self.db_client.upsert_vm_runtime_state.assert_any_call("demo", {"status": "running"})
-        self.db_client.upsert_vm_runtime_state.assert_any_call("clonebox", {"status": "stopped"})
+        self.db_client.upsert_vm_runtime_state.assert_any_call("demo", {"status": "running"}, "background_refresh")
+        self.db_client.upsert_vm_runtime_state.assert_any_call("clonebox", {"status": "stopped"}, "background_refresh")
 
     def test_run_no_jobs_available(self):
         """Test run loop when no jobs are available."""
@@ -405,6 +406,309 @@ class TestWorkerDaemon(unittest.TestCase):
 
         self.assertTrue(self.worker.shutdown_requested)
         self.assertTrue(self.worker.wake_event.is_set())
+
+    def test_process_job_deletes_runtime_state(self):
+        """Test job result with deleteRuntimeState flag."""
+        job = {
+            "id": 1,
+            "type": "destroy_vm",
+            "targetHostId": "test-host",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        self.executor.get_resource_locks.return_value = ["vm:test-vm"]
+        self.db_client.acquire_resource_locks.return_value = True
+        self.executor.execute_job.return_value = {
+            "vmName": "test-vm",
+            "deleteRuntimeState": True,
+        }
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.delete_vm_runtime_state.assert_called_once_with("test-vm")
+
+    def test_process_job_patches_runtime_state(self):
+        """Test job result with runtimeStatePatch."""
+        job = {
+            "id": 1,
+            "type": "start_vm",
+            "targetHostId": "test-host",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        self.executor.get_resource_locks.return_value = ["vm:test-vm"]
+        self.db_client.acquire_resource_locks.return_value = True
+        self.db_client.get_vm_runtime_state.return_value = {
+            "vm_name": "test-vm",
+            "state": {"status": "stopped"},
+        }
+        self.executor.execute_job.return_value = {
+            "vmName": "test-vm",
+            "runtimeStatePatch": {"status": "running"},
+        }
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.upsert_vm_runtime_state.assert_called_once_with(
+            "test-vm",
+            {"status": "running"},
+            "worker_mutation",
+        )
+
+    def test_process_job_upserts_snapshot_record(self):
+        """Test job result with snapshotRecord."""
+        job = {
+            "id": 1,
+            "type": "snapshot_create",
+            "targetHostId": "test-host",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        self.executor.get_resource_locks.return_value = ["vm:test-vm"]
+        self.db_client.acquire_resource_locks.return_value = True
+        self.executor.execute_job.return_value = {
+            "vmName": "test-vm",
+            "snapshotId": "snap-1",
+            "snapshotRecord": {"metadata": {"created": "2024-01-01"}},
+        }
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.upsert_vm_snapshot.assert_called_once_with(
+            "test-vm",
+            "snap-1",
+            {"metadata": {"created": "2024-01-01"}},
+        )
+
+    def test_process_job_deletes_snapshot_record(self):
+        """Test job result with deleteSnapshotRecord."""
+        job = {
+            "id": 1,
+            "type": "snapshot_delete",
+            "targetHostId": "test-host",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        self.executor.get_resource_locks.return_value = ["vm:test-vm"]
+        self.db_client.acquire_resource_locks.return_value = True
+        self.executor.execute_job.return_value = {
+            "vmName": "test-vm",
+            "snapshotId": "snap-1",
+            "deleteSnapshotRecord": True,
+        }
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.delete_vm_snapshot.assert_called_once_with("test-vm", "snap-1")
+
+    def test_process_job_mark_failed_error(self):
+        """Test handling of error when marking job as failed."""
+        job = {
+            "id": 1,
+            "type": "provision_vm",
+            "targetHostId": "test-host",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        self.executor.get_resource_locks.return_value = ["vm:test-vm"]
+        self.db_client.acquire_resource_locks.return_value = True
+        self.executor.execute_job.side_effect = RuntimeError("Unexpected error")
+        self.db_client.mark_job_failed.side_effect = RuntimeError("DB error")
+
+        result = self.worker._process_job(job)
+
+        self.assertFalse(result)
+        self.db_client.mark_job_failed.assert_called_once()
+
+    @patch("hlvmp_worker.worker.subprocess.run")
+    def test_process_job_lock_release_error(self, mock_run):
+        """Test that lock release errors are logged but don't fail the job."""
+        job = {
+            "id": 101,
+            "type": "provision_vm",
+            "status": "queued",
+            "payload": {"configPath": "/path/to/config"},
+        }
+
+        self.executor.get_resource_locks.return_value = ["vm:test-vm"]
+        self.db_client.acquire_resource_locks.return_value = True
+        self.executor.execute_job.return_value = {"success": True}
+        self.db_client.release_resource_locks.side_effect = RuntimeError("Lock release failed")
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.mark_job_succeeded.assert_called_once()
+
+    def test_process_job_with_runtime_state_patch(self):
+        """Test job processing with runtime state patch."""
+        job = {
+            "id": 102,
+            "type": "update_vm",
+            "status": "queued",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        current_state = {"state": {"status": "running", "cpu": 2}}
+        patch = {"memory": 4096}
+
+        self.executor.get_resource_locks.return_value = []
+        self.executor.execute_job.return_value = {
+            "success": True,
+            "vmName": "test-vm",
+            "runtimeStatePatch": patch,
+        }
+        self.db_client.get_vm_runtime_state.return_value = current_state
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.upsert_vm_runtime_state.assert_called_once()
+        call_args = self.db_client.upsert_vm_runtime_state.call_args
+        updated_state = call_args[0][1]
+        self.assertEqual(updated_state["status"], "running")
+        self.assertEqual(updated_state["memory"], 4096)
+
+    def test_process_job_with_delete_runtime_state(self):
+        """Test job processing with runtime state deletion."""
+        job = {
+            "id": 103,
+            "type": "delete_vm",
+            "status": "queued",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        self.executor.get_resource_locks.return_value = []
+        self.executor.execute_job.return_value = {
+            "success": True,
+            "vmName": "test-vm",
+            "deleteRuntimeState": True,
+        }
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.delete_vm_runtime_state.assert_called_once_with("test-vm")
+
+    def test_process_job_with_snapshot_record(self):
+        """Test job processing with snapshot record."""
+        job = {
+            "id": 104,
+            "type": "create_snapshot",
+            "status": "queued",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        self.executor.get_resource_locks.return_value = []
+        self.executor.execute_job.return_value = {
+            "success": True,
+            "vmName": "test-vm",
+            "snapshotId": "snap-1",
+            "snapshotRecord": {"name": "snap-1", "created": "2026-06-22"},
+        }
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.upsert_vm_snapshot.assert_called_once_with(
+            "test-vm", "snap-1", {"name": "snap-1", "created": "2026-06-22"}
+        )
+
+    def test_process_job_with_delete_snapshot_record(self):
+        """Test job processing with snapshot deletion."""
+        job = {
+            "id": 105,
+            "type": "delete_snapshot",
+            "status": "queued",
+            "targetVmId": "test-vm",
+            "payload": {},
+        }
+
+        self.executor.get_resource_locks.return_value = []
+        self.executor.execute_job.return_value = {
+            "success": True,
+            "vmName": "test-vm",
+            "snapshotId": "snap-1",
+            "deleteSnapshotRecord": True,
+        }
+
+        result = self.worker._process_job(job)
+
+        self.assertTrue(result)
+        self.db_client.delete_vm_snapshot.assert_called_once_with("test-vm", "snap-1")
+
+    def test_refresh_runtime_state_caches(self):
+        """Test runtime state cache refresh."""
+        self.executor.refresh_all_runtime_state_caches.return_value = [
+            {"vmName": "vm1", "runtimeState": {"status": "running"}},
+            {"vmName": "vm2", "runtimeState": {"status": "stopped"}},
+        ]
+
+        self.worker._refresh_runtime_state_caches()
+
+        self.assertEqual(self.db_client.upsert_vm_runtime_state.call_count, 2)
+
+    def test_refresh_runtime_state_caches_error(self):
+        """Test runtime state cache refresh with error."""
+        self.executor.refresh_all_runtime_state_caches.side_effect = RuntimeError("Refresh failed")
+
+        # Should not raise exception
+        self.worker._refresh_runtime_state_caches()
+
+
+class TestSudoFunctions(unittest.TestCase):
+    """Test sudo validation and keepalive functions."""
+
+    @patch("hlvmp_worker.worker.subprocess.run")
+    def test_validate_sudo_credentials_success(self, mock_run):
+        """Test successful sudo validation."""
+        mock_run.return_value = MagicMock(returncode=0)
+
+        # Should not raise exception
+        from hlvmp_worker.worker import ensure_sudo_credentials
+        ensure_sudo_credentials()
+
+        mock_run.assert_called_once()
+        self.assertEqual(mock_run.call_args[0][0], ["sudo", "-v"])
+
+    @patch("hlvmp_worker.worker.subprocess.run")
+    def test_validate_sudo_credentials_failure(self, mock_run):
+        """Test sudo validation failure."""
+        mock_run.return_value = MagicMock(returncode=1)
+
+        from hlvmp_worker.worker import ensure_sudo_credentials
+
+        with self.assertRaises(RuntimeError) as context:
+            ensure_sudo_credentials()
+
+        self.assertIn("Unable to acquire sudo credentials", str(context.exception))
+
+    @patch("hlvmp_worker.worker.threading.Thread")
+    @patch("hlvmp_worker.worker.subprocess.run")
+    def test_start_sudo_keepalive(self, mock_run, mock_thread):
+        """Test sudo keepalive thread start."""
+        from hlvmp_worker.worker import start_sudo_keepalive
+
+        mock_thread_instance = MagicMock()
+        mock_thread.return_value = mock_thread_instance
+
+        start_sudo_keepalive()
+
+        mock_thread.assert_called_once()
+        mock_thread_instance.start.assert_called_once()
+        self.assertTrue(mock_thread.call_args[1]["daemon"])
 
 
 if __name__ == "__main__":

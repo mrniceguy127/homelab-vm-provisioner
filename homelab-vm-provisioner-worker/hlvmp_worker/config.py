@@ -4,7 +4,6 @@ Reads configuration from environment variables and config files.
 """
 
 import os
-import shutil
 import socket
 from pathlib import Path
 from typing import Optional
@@ -65,30 +64,26 @@ class WorkerConfig:
         """Resolve path to provisioner CLI.
 
         Args:
-            cli_path: Configured CLI path or None
+            cli_path: Configured CLI path (REQUIRED for standalone microservice operation)
 
         Returns:
             Absolute path to provisioner CLI directory
 
         Raises:
-            ValueError: If CLI path cannot be resolved
+            ValueError: If CLI path is not provided
         """
-        if cli_path:
-            # Use configured path
-            path = Path(cli_path).resolve()
-            if not path.exists():
-                raise ValueError(f"Provisioner CLI path does not exist: {cli_path}")
-            return str(path)
+        if not cli_path:
+            raise ValueError(
+                "PROVISIONER_CLI_PATH must be explicitly configured. "
+                "Worker is a standalone microservice and cannot assume provisioner location."
+            )
 
-        # Try to find vmctl in PATH
-        vmctl_path = shutil.which("vmctl")
-        if vmctl_path:
-            # vmctl found, return its parent directory
-            return str(Path(vmctl_path).parent.resolve())
+        # Use configured path
+        path = Path(cli_path).resolve()
+        if not path.exists():
+            raise ValueError(f"Provisioner CLI path does not exist: {cli_path}")
 
-        raise ValueError(
-            "Could not find provisioner CLI. Set PROVISIONER_CLI_PATH or ensure vmctl is in PATH."
-        )
+        return str(path)
 
     @classmethod
     def from_env(cls) -> "WorkerConfig":

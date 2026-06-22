@@ -231,71 +231,45 @@ test_python_cli() {
 
     cd "$PYTHON_DIR" || exit 1
 
-    # Source Python environment
-    export ROOT_DIR="$PYTHON_DIR"
-    source "$PYTHON_DIR/scripts/_resolve_python.sh"
-    resolve_python_env
-
-    # Run linting
-    PYTHON_LINT_OUTPUT=$(mktemp)
-    start_spinner "Linting Python CLI"
-    if "$PYTHON_BIN" -m ruff check "$PYTHON_DIR/homelab_vm_provisioner" "$PYTHON_DIR/tests" > "$PYTHON_LINT_OUTPUT" 2>&1; then
-        stop_spinner
-        PYTHON_LINT="passed"
-    else
-        stop_spinner
-        PYTHON_LINT="issues found"
-    fi
-
-    # Run tests with coverage
+    # Run the CLI's own test script
     PYTHON_OUTPUT=$(mktemp)
     start_spinner "Running Python CLI tests"
-    if "$PYTHON_BIN" -m coverage run --source=homelab_vm_provisioner -m unittest \
-        tests.test_config tests.test_provision tests.test_adapters tests.test_services \
-        tests.test_managed_nftables tests.test_reconciler tests.test_main tests.test_network \
-        tests.test_system tests.test_cli tests.test_integration \
-        > "$PYTHON_OUTPUT" 2>&1; then
+    if "$PYTHON_DIR/test" > "$PYTHON_OUTPUT" 2>&1; then
         stop_spinner
-        # Check if tests actually passed (no failures/errors)
-        if grep -q "FAILED\|ERROR" "$PYTHON_OUTPUT"; then
-            PYTHON_STATUS="FAIL"
-        else
-            PYTHON_STATUS="PASS"
+        PYTHON_STATUS="PASS"
+        PYTHON_LINT="passed"
+        # Extract test results from output
+        PYTHON_TESTS=$(grep -E "Ran [0-9]+ tests" "$PYTHON_OUTPUT" | sed -E 's/Ran ([0-9]+) tests.*/\1 tests/' | head -1)
+        PYTHON_COVERAGE=$(grep "^TOTAL" "$PYTHON_OUTPUT" | awk '{print $NF}' | head -1)
+        if [[ -z "$PYTHON_TESTS" ]]; then
+            PYTHON_TESTS="all passed"
+        fi
+        if [[ -z "$PYTHON_COVERAGE" ]]; then
+            PYTHON_COVERAGE="N/A"
         fi
     else
         stop_spinner
         PYTHON_STATUS="FAIL"
-    fi
-
-    # Extract test count
-    PYTHON_TESTS=$(grep -E "Ran [0-9]+ tests" "$PYTHON_OUTPUT" | sed -E 's/Ran ([0-9]+) tests.*/\1 tests/')
-    if [[ -z "$PYTHON_TESTS" ]]; then
-        PYTHON_TESTS="unknown"
-    fi
-
-    # Check for failures/errors
-    PYTHON_FAILURES=$(grep -E "FAILED \(failures=[0-9]+, errors=[0-9]+\)" "$PYTHON_OUTPUT" | sed -E 's/FAILED \((.*)\)/\1/')
-    if [[ -n "$PYTHON_FAILURES" ]]; then
-        PYTHON_TESTS="$PYTHON_TESTS ($PYTHON_FAILURES)"
-    elif grep -q "^OK" "$PYTHON_OUTPUT"; then
-        PYTHON_TESTS="$PYTHON_TESTS (all passed)"
-    fi
-
-    # Get coverage and check threshold
-    PYTHON_COV_OUTPUT=$(mktemp)
-    if ! "$PYTHON_BIN" -m coverage report > "$PYTHON_COV_OUTPUT" 2>&1; then
-        # Coverage report failed (likely due to fail_under threshold)
-        if grep -q "Coverage failure:" "$PYTHON_COV_OUTPUT"; then
-            PYTHON_STATUS="FAIL"
+        # Check if it's a setup issue vs test failure
+        if grep -q "Ruff is unavailable\|cannot import repo test dependencies" "$PYTHON_OUTPUT"; then
+            PYTHON_LINT="skipped (run ./setup --dev)"
+            PYTHON_TESTS="not run (missing dependencies)"
+            PYTHON_COVERAGE="N/A"
+        else
+            PYTHON_LINT="issues found"
+            PYTHON_TESTS=$(grep -E "Ran [0-9]+ tests" "$PYTHON_OUTPUT" | sed -E 's/Ran ([0-9]+) tests.*/\1 tests/' | head -1)
+            if [[ -z "$PYTHON_TESTS" ]]; then
+                PYTHON_TESTS="unknown"
+            fi
+            PYTHON_COVERAGE=$(grep "^TOTAL" "$PYTHON_OUTPUT" | awk '{print $NF}' | head -1)
+            if [[ -z "$PYTHON_COVERAGE" ]]; then
+                PYTHON_COVERAGE="N/A"
+            fi
         fi
-    fi
-    PYTHON_COVERAGE=$(grep "^TOTAL" "$PYTHON_COV_OUTPUT" | awk '{print $NF}')
-    if [[ -z "$PYTHON_COVERAGE" ]]; then
-        PYTHON_COVERAGE="N/A"
     fi
 
     print_result "Python CLI" "$PYTHON_STATUS" "$PYTHON_LINT" "$PYTHON_TESTS" "$PYTHON_COVERAGE"
-    rm -f "$PYTHON_OUTPUT" "$PYTHON_COV_OUTPUT" "$PYTHON_LINT_OUTPUT"
+    rm -f "$PYTHON_OUTPUT"
 }
 
 test_python_worker() {

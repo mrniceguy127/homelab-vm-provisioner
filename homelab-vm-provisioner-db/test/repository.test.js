@@ -85,3 +85,39 @@ test('upsertVmSnapshot stores snapshot metadata', async () => {
   assert.equal(snapshot.snapshot_id, 'snap-1');
   assert.match(pool.queries[0].sql, /INSERT INTO vm_snapshots/);
 });
+
+test('storeVmLogSnapshot stores log content under 1MB', async () => {
+  const now = new Date();
+  const logContent = 'line1\nline2\nline3\n';
+  const pool = createPool([{ rows: [{ id: 1, vm_name: 'test-vm', log_content: logContent, line_count: 3, collected_by: 'worker', snapshot_at: now }] }]);
+  const repository = new JobRepository(pool);
+
+  const logSnapshot = await repository.storeVmLogSnapshot('test-vm', logContent, 3, 'worker');
+  
+  assert.equal(logSnapshot.vm_name, 'test-vm');
+  assert.equal(logSnapshot.line_count, 3);
+  assert.equal(logSnapshot.collected_by, 'worker');
+  assert.equal(pool.queries.length, 1);
+  assert.match(pool.queries[0].sql, /INSERT INTO vm_log_snapshots/);
+});
+
+test('storeVmLogSnapshot rejects logs exceeding 1MB', async () => {
+  const pool = createPool([]);
+  const repository = new JobRepository(pool);
+  
+  // Create a log content larger than 1MB
+  const largeLine = 'x'.repeat(1024); // 1KB line
+  const largeLog = (largeLine + '\n').repeat(1025); // >1MB
+  
+  await assert.rejects(
+    async () => {
+      await repository.storeVmLogSnapshot('test-vm', largeLog, 1025, 'worker');
+    },
+    {
+      message: /Log content exceeds 1MB limit/
+    }
+  );
+  
+  // Should not have made any database queries
+  assert.equal(pool.queries.length, 0);
+});

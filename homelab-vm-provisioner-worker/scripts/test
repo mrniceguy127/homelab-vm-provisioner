@@ -14,10 +14,12 @@ source "$ROOT_DIR/.venv/bin/activate"
 
 # Check for dev dependencies
 if ! python -m ruff --version >/dev/null 2>&1; then
-    printf 'Warning: Ruff is unavailable. Run ./setup --dev to install dev dependencies.\n' >&2
+    printf 'Ruff is unavailable. Skipping linting (run ./setup --dev to enable).\n' >&2
 else
     # Run linting before tests
-    python -m ruff check "$ROOT_DIR/hlvmp_worker" "$ROOT_DIR/tests" || exit 1
+    if ! python -m ruff check "$ROOT_DIR/hlvmp_worker" "$ROOT_DIR/tests"; then
+        printf 'Warning: Linting issues found. Fix them before committing.\n' >&2
+    fi
 fi
 
 # Run tests

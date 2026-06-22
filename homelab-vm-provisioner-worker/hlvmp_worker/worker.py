@@ -4,7 +4,9 @@ Long-running process that claims and executes queued jobs from PostgreSQL.
 """
 
 import logging
+import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -24,6 +26,70 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("worker")
+
+# Sudo keepalive interval (60 seconds)
+SUDO_KEEPALIVE_INTERVAL_S = 60
+
+
+def ensure_sudo_credentials():
+    """Ensure sudo credentials are available for worker operations.
+
+    The worker needs sudo to execute provisioner CLI commands that interact
+    with libvirt and nftables. This function always prompts for sudo access
+    on startup to ensure proper credentials.
+
+    Raises:
+        RuntimeError: If unable to acquire sudo credentials
+    """
+    logger.info("=" * 70)
+    logger.info("HOMELAB VM PROVISIONER WORKER")
+    logger.info("=" * 70)
+    logger.info("")
+    logger.info("This worker daemon requires sudo access to:")
+    logger.info("  • Manage libvirt VMs and networks")
+    logger.info("  • Configure nftables firewall rules")
+    logger.info("  • Execute provisioner CLI operations")
+    logger.info("")
+    logger.info("You will be prompted for your sudo password.")
+    logger.info("=" * 70)
+
+    # Always validate sudo access on startup (prompts if needed)
+    result = subprocess.run(
+        ["sudo", "-v"],
+        check=False,
+    )
+
+    if result.returncode != 0:
+        logger.error("Failed to acquire sudo credentials")
+        raise RuntimeError("Unable to acquire sudo credentials for worker operations")
+
+    logger.info("✓ Sudo credentials acquired successfully")
+    logger.info("")
+
+
+def start_sudo_keepalive():
+    """Start background thread to refresh sudo credentials periodically.
+
+    This prevents sudo credentials from expiring while the worker is running.
+    The thread runs as a daemon so it won't prevent the process from exiting.
+    """
+    def refresh_sudo():
+        """Background task to refresh sudo credentials."""
+        while True:
+            try:
+                time.sleep(SUDO_KEEPALIVE_INTERVAL_S)
+                subprocess.run(
+                    ["sudo", "-n", "-v"],
+                    capture_output=True,
+                    check=False,
+                )
+            except Exception as e:
+                logger.warning(f"Sudo keepalive refresh failed: {e}")
+                # Continue running - credentials may be valid longer than timeout
+
+    thread = threading.Thread(target=refresh_sudo, daemon=True, name="sudo-keepalive")
+    thread.start()
+    logger.info(f"Sudo keepalive started (refresh interval: {SUDO_KEEPALIVE_INTERVAL_S}s)")
 
 
 class WorkerDaemon:
@@ -150,15 +216,17 @@ class WorkerDaemon:
 
             vm_name = result.get("vmName") or job.get("targetVmId")
             snapshot_id = result.get("snapshotId")
+            observation_source = result.get("observationSource", "worker_mutation")
+
             if vm_name and result.get("deleteRuntimeState"):
                 self.db_client.delete_vm_runtime_state(vm_name)
             elif vm_name and result.get("runtimeState"):
-                self.db_client.upsert_vm_runtime_state(vm_name, result["runtimeState"])
+                self.db_client.upsert_vm_runtime_state(vm_name, result["runtimeState"], observation_source)
             elif vm_name and result.get("runtimeStatePatch"):
                 current_runtime_state = self.db_client.get_vm_runtime_state(vm_name)
                 next_state = dict((current_runtime_state or {}).get("state") or {})
                 next_state.update(result["runtimeStatePatch"])
-                self.db_client.upsert_vm_runtime_state(vm_name, next_state)
+                self.db_client.upsert_vm_runtime_state(vm_name, next_state, observation_source)
 
             if vm_name and snapshot_id and result.get("snapshotRecord"):
                 self.db_client.upsert_vm_snapshot(vm_name, snapshot_id, result["snapshotRecord"])
@@ -209,7 +277,11 @@ class WorkerDaemon:
         try:
             refreshed = self.executor.refresh_all_runtime_state_caches()
             for entry in refreshed:
-                self.db_client.upsert_vm_runtime_state(entry["vmName"], entry["runtimeState"])
+                self.db_client.upsert_vm_runtime_state(
+                    entry["vmName"],
+                    entry["runtimeState"],
+                    "background_refresh"
+                )
         except Exception as e:
             logger.warning(f"Runtime state refresh failed: {e}")
 
@@ -218,6 +290,11 @@ class WorkerDaemon:
 
         This is the main event loop that continuously claims and processes jobs.
         """
+        # Check we're not running as root
+        if os.geteuid() == 0:
+            logger.error("Worker should not run as root. Start as normal user with sudo access.")
+            sys.exit(1)
+
         # Register signal handlers
         signal.signal(signal.SIGINT, self._handle_signal)
         signal.signal(signal.SIGTERM, self._handle_signal)
@@ -328,6 +405,13 @@ def main():  # pragma: no cover
     try:
         # Load configuration from environment
         config = WorkerConfig.from_env()
+
+        # Ensure sudo credentials are available
+        logger.info("Checking sudo credentials...")
+        ensure_sudo_credentials()
+
+        # Start sudo keepalive background thread
+        start_sudo_keepalive()
 
         # Create database client
         db_service_url = config.db_service_url or config.database_url

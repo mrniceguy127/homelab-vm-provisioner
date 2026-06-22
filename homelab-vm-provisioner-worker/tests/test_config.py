@@ -12,10 +12,11 @@ class TestWorkerConfig(unittest.TestCase):
 
     def test_init_with_defaults(self):
         """Test initialization with default values."""
-        with patch("hlvmp_worker.config.shutil.which", return_value="/usr/bin/vmctl"):
+        with patch("hlvmp_worker.config.Path.exists", return_value=True):
             config = WorkerConfig(
                 database_url="postgresql://localhost/test",
                 host_id="test-host",
+                provisioner_cli_path="/usr/bin/vmctl",
             )
 
         self.assertEqual(config.database_url, "postgresql://localhost/test")
@@ -23,7 +24,7 @@ class TestWorkerConfig(unittest.TestCase):
         self.assertIsNotNone(config.worker_id)
         self.assertEqual(config.concurrency, 1)
         self.assertEqual(config.poll_interval, 5.0)
-        self.assertEqual(config.provisioner_cli_path, "/usr/bin")
+        self.assertIn("/usr/bin", config.provisioner_cli_path)
 
     def test_init_with_custom_values(self):
         """Test initialization with custom values."""
@@ -44,21 +45,23 @@ class TestWorkerConfig(unittest.TestCase):
 
     def test_concurrency_minimum(self):
         """Test that concurrency is clamped to minimum of 1."""
-        with patch("hlvmp_worker.config.shutil.which", return_value="/usr/bin/vmctl"):
+        with patch("hlvmp_worker.config.Path.exists", return_value=True):
             config = WorkerConfig(
                 database_url="postgresql://localhost/test",
                 host_id="test-host",
                 concurrency=0,
+                provisioner_cli_path="/usr/bin/vmctl",
             )
 
         self.assertEqual(config.concurrency, 1)
 
     def test_poll_interval_minimum(self):
-        with patch("hlvmp_worker.config.shutil.which", return_value="/usr/bin/vmctl"):
+        with patch("hlvmp_worker.config.Path.exists", return_value=True):
             config = WorkerConfig(
                 database_url="postgresql://localhost/test",
                 host_id="test-host",
                 poll_interval=0.5,
+                provisioner_cli_path="/usr/bin/vmctl",
         )
 
         self.assertEqual(config.poll_interval, 1.0)
@@ -71,10 +74,11 @@ class TestWorkerConfig(unittest.TestCase):
             "WORKER_ID": "env-worker",
             "PROVISIONER_CONCURRENCY": "2",
             "WORKER_POLL_INTERVAL": "7.5",
+            "PROVISIONER_CLI_PATH": "/usr/bin/vmctl",
         },
     )
-    @patch("hlvmp_worker.config.shutil.which", return_value="/usr/bin/vmctl")
-    def test_from_env(self, mock_which):
+    @patch("hlvmp_worker.config.Path.exists", return_value=True)
+    def test_from_env(self, mock_exists):
         """Test loading configuration from environment variables."""
         config = WorkerConfig.from_env()
 
@@ -90,10 +94,11 @@ class TestWorkerConfig(unittest.TestCase):
             "DB_SERVICE_URL": "http://localhost:3002",
             "DB_SERVICE_PASSWORD": "secret",
             "HOST_ID": "env-host",
+            "PROVISIONER_CLI_PATH": "/usr/bin/vmctl",
         },
     )
-    @patch("hlvmp_worker.config.shutil.which", return_value="/usr/bin/vmctl")
-    def test_from_env_with_db_service(self, mock_which):
+    @patch("hlvmp_worker.config.Path.exists", return_value=True)
+    def test_from_env_with_db_service(self, mock_exists):
         """Test loading with DB service URL instead of DATABASE_URL."""
         config = WorkerConfig.from_env()
 
