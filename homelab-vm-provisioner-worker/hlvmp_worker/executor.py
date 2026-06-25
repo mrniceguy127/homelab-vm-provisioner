@@ -5,12 +5,16 @@ in-process on the host.
 """
 
 import contextlib
+import logging
 import sys
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Callable
 
 from .db_client import DatabaseClient
+from .validator import JobValidator, ValidationResult
+
+logger = logging.getLogger("executor")
 
 
 class JobExecutionError(Exception):
@@ -27,18 +31,41 @@ class JobExecutionError(Exception):
         self.retriable = retriable
 
 
+class JobValidationError(Exception):
+    """Raised when job validation fails."""
+
+    def __init__(self, validation_result: ValidationResult):
+        """Initialize job validation error.
+
+        Args:
+            validation_result: The validation result explaining the failure
+        """
+        super().__init__(validation_result.reason or "Job validation failed")
+        self.validation_result = validation_result
+        # Validation failures are generally not retriable (except CLEANUP_REQUIRED)
+        self.retriable = validation_result.requires_cleanup
+
+
 class JobExecutor:
     """Executes provisioner jobs by calling provisioner Python services."""
 
-    def __init__(self, provisioner_cli_path: str, db_client: DatabaseClient):
+    def __init__(self, provisioner_cli_path: str, db_client: DatabaseClient, worker_config=None):
         """Initialize job executor.
 
         Args:
             provisioner_cli_path: Path to provisioner CLI directory
+            db_client: Database client for VM definitions and state
+            worker_config: Worker configuration (optional, for validation)
         """
         self.provisioner_cli_path = Path(provisioner_cli_path)
         self.db_client = db_client
+        self.worker_config = worker_config
         self.service_mode = self._load_service_mode_module()
+        self.validator = None
+
+        # Initialize validator if worker_config is provided
+        if worker_config:
+            self.validator = JobValidator(worker_config, db_client, self.service_mode)
 
         self._handlers: dict[str, Callable] = {
             "provision_vm": self._execute_provision_vm,
@@ -229,10 +256,41 @@ class JobExecutor:
 
         Raises:
             JobExecutionError: If job execution fails
+            JobValidationError: If job validation fails
         """
         job_type = job["type"]
         job_id = job.get("id")
         payload = job.get("payload", {})
+
+        # Validate job before execution if validator is available
+        if self.validator:
+            validation_result = self.validator.validate_job(job)
+
+            logger.debug(
+                f"Job {job_id} validation result: {validation_result.status.value} "
+                f"(action: {validation_result.action.value})"
+            )
+
+            if validation_result.should_noop:
+                # Job is safe to treat as no-op success
+                logger.info(
+                    f"Job {job_id} validated as no-op: {validation_result.reason}"
+                )
+                return {
+                    "success": True,
+                    "noop": True,
+                    "reason": validation_result.reason,
+                    "validation_status": validation_result.status.value,
+                    "validation_code": validation_result.code.value if validation_result.code else None,
+                    "message": validation_result.reason or "Job already completed or is a no-op",
+                }
+
+            if not validation_result.should_execute:
+                # Validation failed - raise error with validation result
+                logger.warning(
+                    f"Job {job_id} validation failed: {validation_result.reason}"
+                )
+                raise JobValidationError(validation_result)
 
         handler = self._handlers.get(job_type)
         if not handler:

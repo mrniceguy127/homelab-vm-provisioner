@@ -64,12 +64,12 @@ if [[ "$ENABLE_DB" == "true" || "$ENABLE_DB_SERVICE" == "true" ]]; then
     log "Building database"
     "$DB_DIR/build" ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}
 fi
-QUEUE" == "true" ]]; then
+
+if [[ "$ENABLE_QUEUE" == "true" ]]; then
     log "Building job queue"
     "$QUEUE_DIR/build" ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}
 fi
 
-if [[ "$ENABLE_
 if [[ "$ENABLE_API" == "true" ]]; then
     log "Building API"
     "$API_DIR/build" ${BUILD_ARGS[@]+"${BUILD_ARGS[@]}"}

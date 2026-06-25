@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from hlvmp_worker.executor import JobExecutionError, JobExecutor
+from hlvmp_worker.executor import JobExecutionError, JobExecutor, JobValidationError
 
 
 class TestJobExecutor(unittest.TestCase):
@@ -15,7 +15,7 @@ class TestJobExecutor(unittest.TestCase):
             patch("hlvmp_worker.executor.Path.exists", return_value=False),
             self.assertRaises(ValueError) as context,
         ):
-            JobExecutor("/fake/path/to/cli", Mock())
+            JobExecutor("/fake/path/to/cli", Mock(), worker_config=None)
 
         self.assertIn("does not exist", str(context.exception))
 
@@ -28,10 +28,13 @@ class TestJobExecutor(unittest.TestCase):
         self.service_mode.create_snapshot_record.return_value = {"snapshot_id": "snap-1"}
         self.service_mode.restore_snapshot_record.return_value = {"runtime_state": {"vm_name": "test-vm"}}
         self.service_mode.delete_snapshot_record.return_value = {"snapshot_id": "snap-1"}
+
+        # Create executor without validator (worker_config=None)
         with patch("hlvmp_worker.executor.Path.exists", return_value=True), patch.object(
             JobExecutor, "_load_service_mode_module", return_value=self.service_mode
         ):
-            self.executor = JobExecutor("/fake/path/to/cli", self.db_client)
+            self.executor = JobExecutor("/fake/path/to/cli", self.db_client, worker_config=None)
+
         self.db_client.get_vm_definition_by_name.return_value = {
             "id": 42,
             "vm_name": "test-vm",
@@ -138,7 +141,7 @@ class TestJobExecutor(unittest.TestCase):
         with patch("hlvmp_worker.executor.Path.exists", return_value=True), patch(
             "hlvmp_worker.executor.import_module", side_effect=ModuleNotFoundError("missing")
         ), self.assertRaises(JobExecutionError) as context:
-            JobExecutor("/fake/path/to/cli", Mock())
+            JobExecutor("/fake/path/to/cli", Mock(), worker_config=None)
 
         self.assertIn("Could not import provisioner service module", str(context.exception))
         self.assertFalse(context.exception.retriable)
@@ -510,6 +513,122 @@ class TestJobExecutor(unittest.TestCase):
         call_args = self.db_client.store_vm_log_snapshot.call_args
         log_content = call_args.kwargs["log_content"]
         self.assertLessEqual(len(log_content.encode("utf-8")), 1024 * 1024)
+
+
+class TestJobExecutorWithValidation(unittest.TestCase):
+    """Test job executor with validation enabled."""
+
+    def setUp(self):
+        """Set up test fixtures with validation enabled."""
+        self.db_client = Mock()
+        self.service_mode = Mock()
+        self.worker_config = Mock()
+        self.worker_config.host_id = "test-host"
+
+        self.service_mode.create_vm.return_value = {"state": {"vm_name": "test-vm"}}
+        self.service_mode.refresh_vm_runtime_state.return_value = {
+            "status": "running",
+            "network": {},
+            "ports": [],
+        }
+
+        # Create executor with validation (worker_config provided)
+        with patch("hlvmp_worker.executor.Path.exists", return_value=True), patch.object(
+            JobExecutor, "_load_service_mode_module", return_value=self.service_mode
+        ):
+            self.executor = JobExecutor(
+                "/fake/path/to/cli", self.db_client, worker_config=self.worker_config
+            )
+
+        self.db_client.get_vm_definition_by_name.return_value = {
+            "id": 42,
+            "vm_name": "test-vm",
+            "config": {
+                "vm": {"name": "test-vm", "user": "tester"},
+                "network": {"mode": "nat-auto"},
+            },
+        }
+
+    def test_execute_job_with_validation_wrong_host(self):
+        """Test job execution fails validation for wrong host."""
+        job = {
+            "id": 1,
+            "type": "provision_vm",
+            "targetHostId": "wrong-host",
+            "payload": {"vmName": "test-vm"},
+        }
+
+        with self.assertRaises(JobValidationError) as context:
+            self.executor.execute_job(job)
+
+        self.assertIn("wrong-host", str(context.exception))
+        result = context.exception.validation_result
+        self.assertEqual(result.status.value, "wrong_host")
+
+    def test_execute_job_with_validation_noop_success(self):
+        """Test job execution returns no-op for already-running VM."""
+        job = {
+            "id": 1,
+            "type": "start_vm",
+            "targetHostId": "test-host",
+            "payload": {"vmName": "test-vm"},
+        }
+
+        with (
+            patch.object(self.executor.validator, "_vm_exists", return_value=True),
+            patch.object(self.executor.validator, "_get_vm_status", return_value="running"),
+        ):
+            result = self.executor.execute_job(job)
+
+        self.assertTrue(result["success"])
+        self.assertTrue(result["noop"])
+        self.assertIn("already running", result["reason"])
+        # Should not have called service_mode.start_vm
+        self.service_mode.start_vm.assert_not_called()
+
+    def test_execute_job_with_validation_vm_already_exists(self):
+        """Test job execution fails validation when VM already exists."""
+        job = {
+            "id": 1,
+            "type": "provision_vm",
+            "targetHostId": "test-host",
+            "payload": {"vmName": "test-vm"},
+        }
+
+        with (
+            patch.object(self.executor.validator, "_vm_exists", return_value=True),
+            patch.object(self.executor.validator, "_disk_exists", return_value=True),
+            self.assertRaises(JobValidationError) as context,
+        ):
+            self.executor.execute_job(job)
+
+        result = context.exception.validation_result
+        self.assertEqual(result.status.value, "already_exists")
+        self.assertIn("duplicate creation", result.reason)
+
+    def test_execute_job_with_validation_valid_provision(self):
+        """Test job execution proceeds after successful validation."""
+        job = {
+            "id": 1,
+            "type": "provision_vm",
+            "targetHostId": "test-host",
+            "payload": {"vmName": "test-vm"},
+        }
+
+        self.db_client.list_vm_definitions.return_value = []
+        self.db_client.list_vm_runtime_states.return_value = []
+        self.db_client.list_network_groups.return_value = []
+
+        with (
+            patch.object(self.executor.validator, "_vm_exists", return_value=False),
+            patch.object(self.executor.validator, "_disk_exists", return_value=False),
+        ):
+            result = self.executor.execute_job(job)
+
+        self.assertTrue(result["success"])
+        self.assertFalse(result.get("noop", False))
+        # Should have called service_mode.create_vm
+        self.service_mode.create_vm.assert_called_once()
 
 
 if __name__ == "__main__":

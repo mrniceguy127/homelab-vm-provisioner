@@ -16,7 +16,7 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
 fi
 
 # Defaults
-QUEUE_MODE="${QUEUE_MODE:-docker}"
+DOCKER_MODE=false
 QUEUE_HOST="${QUEUE_HOST:-localhost}"
 QUEUE_PORT="${QUEUE_PORT:-3334}"
 QUEUE_ADMIN_USER="${QUEUE_ADMIN_USER:-admin}"
@@ -26,7 +26,7 @@ QUEUE_ADMIN_PASSWORD="${QUEUE_ADMIN_PASSWORD:-change-me}"
 for arg in "$@"; do
     case "$arg" in
         --docker)
-            QUEUE_MODE=docker
+            DOCKER_MODE=true
             ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
@@ -34,8 +34,10 @@ for arg in "$@"; do
             echo "Start RabbitMQ service."
             echo ""
             echo "Options:"
-            echo "  --docker    Force Docker mode"
+            echo "  --docker    Start RabbitMQ in Docker"
             echo "  --help      Show this help message"
+            echo ""
+            echo "Default: Start native RabbitMQ service"
             exit 0
             ;;
     esac
@@ -82,9 +84,9 @@ wait_for_rabbitmq() {
     return 1
 }
 
-log "Starting RabbitMQ (mode: $QUEUE_MODE)"
+log "Starting RabbitMQ (Docker mode: $DOCKER_MODE)"
 
-if [[ "$QUEUE_MODE" == "docker" ]]; then
+if [[ "$DOCKER_MODE" == "true" ]]; then
     CONTAINER_NAME="hlvmp-rabbitmq"
     
     if docker_container_running "$CONTAINER_NAME"; then
@@ -108,7 +110,8 @@ if [[ "$QUEUE_MODE" == "docker" ]]; then
     log "RabbitMQ container started successfully"
     log "Management UI: http://localhost:15672"
     
-elif [[ "$QUEUE_MODE" == "non-docker" ]]; then
+else
+    # Native mode
     if ! command -v rabbitmqctl >/dev/null 2>&1; then
         printf 'Error: RabbitMQ is not installed\n' >&2
         printf 'Run ./setup to install RabbitMQ\n' >&2
@@ -128,10 +131,6 @@ elif [[ "$QUEUE_MODE" == "non-docker" ]]; then
     
     wait_for_rabbitmq
     log "RabbitMQ service started successfully"
-    
-else
-    printf 'Error: Invalid QUEUE_MODE: %s\n' "$QUEUE_MODE" >&2
-    exit 1
 fi
 
 log "RabbitMQ is running on port $QUEUE_PORT"

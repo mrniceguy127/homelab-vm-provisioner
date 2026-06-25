@@ -4,7 +4,7 @@
 # Provisions RabbitMQ topology: vhost, users, exchange, queues, bindings
 # This script is idempotent and safe to run multiple times.
 #
-# Usage: ./build
+# Usage: ./build [--docker]
 
 set -euo pipefail
 
@@ -17,6 +17,29 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     source "$SCRIPT_DIR/.env"
     set +a
 fi
+
+# Parse arguments
+DOCKER_MODE=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --docker)
+            DOCKER_MODE=true
+            ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Provision RabbitMQ topology (vhost, users, exchange, queues, bindings)."
+            echo ""
+            echo "Options:"
+            echo "  --docker    Use Docker mode for RabbitMQ server lifecycle"
+            echo "  --help      Show this help message"
+            echo ""
+            echo "This script starts RabbitMQ if not already running and provisions the topology."
+            exit 0
+            ;;
+    esac
+done
 
 # Required environment variables
 : "${QUEUE_HOST:?QUEUE_HOST is required}"
@@ -36,9 +59,14 @@ log() {
     printf '==> %s\n' "$*"
 }
 
+# Check if RabbitMQ is already running
+is_rabbitmq_running() {
+    curl -sf -u "$QUEUE_ADMIN_USER:$QUEUE_ADMIN_PASSWORD" \
+        "http://$QUEUE_HOST:15672/api/overview" >/dev/null 2>&1
+}
+
 # Construct management API base URL
 MGMT_API_BASE="http://$QUEUE_HOST:15672/api"
-AUTH_HEADER="Authorization: Basic $(printf '%s:%s' "$QUEUE_ADMIN_USER" "$QUEUE_ADMIN_PASSWORD" | base64)"
 
 # Derived values
 QUEUE_NAME="provisioner.worker.$HOST_ID"
@@ -51,13 +79,36 @@ log "  Queue: $QUEUE_NAME"
 log "  Routing key: $ROUTING_KEY"
 log ""
 
-# Verify RabbitMQ is reachable
-log "Verifying RabbitMQ management API is reachable"
-if ! curl -sf -u "$QUEUE_ADMIN_USER:$QUEUE_ADMIN_PASSWORD" \
-    "$MGMT_API_BASE/overview" >/dev/null; then
-    printf 'Error: Cannot reach RabbitMQ management API at %s\n' "$MGMT_API_BASE" >&2
-    printf 'Ensure RabbitMQ is running (./start) and credentials are correct\n' >&2
-    exit 1
+# Check if RabbitMQ is already running
+RABBITMQ_WAS_RUNNING=false
+if is_rabbitmq_running; then
+    log "RabbitMQ is already running"
+    RABBITMQ_WAS_RUNNING=true
+else
+    log "RabbitMQ is not running - starting it"
+    if [[ "$DOCKER_MODE" == "true" ]]; then
+        ./start --docker
+    else
+        ./start
+    fi
+    
+    # Wait for RabbitMQ to be ready
+    log "Waiting for RabbitMQ to be ready..."
+    max_attempts=30
+    attempt=0
+    while [[ $attempt -lt $max_attempts ]]; do
+        if is_rabbitmq_running; then
+            log "RabbitMQ is ready"
+            break
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    
+    if [[ $attempt -eq $max_attempts ]]; then
+        printf 'Error: RabbitMQ failed to become ready after %d seconds\n' "$max_attempts" >&2
+        exit 1
+    fi
 fi
 
 # Create vhost
@@ -120,3 +171,10 @@ log "  Users created: $QUEUE_API_USER, $WORKER_QUEUE_USER"
 log "  Exchange: $QUEUE_EXCHANGE (topic)"
 log "  Queue: $QUEUE_NAME (durable)"
 log "  Binding: $QUEUE_NAME <- $QUEUE_EXCHANGE via $ROUTING_KEY"
+
+# Stop RabbitMQ if we started it
+if [[ "$RABBITMQ_WAS_RUNNING" == "false" ]]; then
+    log ""
+    log "Stopping RabbitMQ (it was not running before build)"
+    ./stop
+fi

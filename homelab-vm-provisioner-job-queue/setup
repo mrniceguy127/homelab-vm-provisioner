@@ -17,14 +17,14 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
 fi
 
 # Defaults
-QUEUE_MODE="${QUEUE_MODE:-docker}"
+DOCKER_MODE=false
 SKIP_SYSTEM_PACKAGES="${SKIP_SYSTEM_PACKAGES:-false}"
 
 # Parse arguments
 for arg in "$@"; do
     case "$arg" in
         --docker)
-            QUEUE_MODE=docker
+            DOCKER_MODE=true
             ;;
         --skip-system-packages)
             SKIP_SYSTEM_PACKAGES=true
@@ -40,7 +40,6 @@ for arg in "$@"; do
             echo "  --help                   Show this help message"
             echo ""
             echo "Environment variables:"
-            echo "  QUEUE_MODE              Queue mode (docker or non-docker, default: docker)"
             echo "  SKIP_SYSTEM_PACKAGES    Skip package installation (default: false)"
             exit 0
             ;;
@@ -85,9 +84,9 @@ ensure_sudo_credentials() {
     sudo -v
 }
 
-log "Queue setup mode: $QUEUE_MODE"
+log "Queue setup (Docker mode: $DOCKER_MODE)"
 
-if [[ "$QUEUE_MODE" == "docker" ]]; then
+if [[ "$DOCKER_MODE" == "true" ]]; then
     log "Docker mode: Pulling RabbitMQ image"
     
     if ! command -v docker >/dev/null 2>&1; then
@@ -99,7 +98,8 @@ if [[ "$QUEUE_MODE" == "docker" ]]; then
     docker pull rabbitmq:3-management
     log "RabbitMQ Docker image ready"
     
-elif [[ "$QUEUE_MODE" == "non-docker" ]]; then
+else
+    # Native mode
     if [[ "$SKIP_SYSTEM_PACKAGES" == "true" ]]; then
         log "Skipping RabbitMQ package installation"
         
@@ -158,11 +158,6 @@ elif [[ "$QUEUE_MODE" == "non-docker" ]]; then
     else
         run_sudo rabbitmq-plugins enable rabbitmq_management || true
     fi
-    
-else
-    printf 'Error: Invalid QUEUE_MODE: %s\n' "$QUEUE_MODE" >&2
-    printf 'Allowed values: docker, non-docker\n' >&2
-    exit 1
 fi
 
 log "Queue setup complete"

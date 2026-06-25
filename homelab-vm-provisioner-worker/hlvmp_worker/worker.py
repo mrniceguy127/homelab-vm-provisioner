@@ -16,7 +16,7 @@ import requests
 
 from hlvmp_worker.config import WorkerConfig
 from hlvmp_worker.db_client import DatabaseClient
-from hlvmp_worker.executor import JobExecutionError, JobExecutor
+from hlvmp_worker.executor import JobExecutionError, JobExecutor, JobValidationError
 from hlvmp_worker.rabbitmq_consumer import RabbitMqConsumer
 
 # Configure logging
@@ -189,6 +189,21 @@ class WorkerDaemon:
             if not isinstance(result, dict):
                 result = {"success": bool(result)}
 
+            # Handle no-op success from validation
+            if result.get("noop"):
+                logger.info(f"Job {job_id} completed as no-op: {result.get('reason')}")
+                self._log_job_event(
+                    job_id,
+                    "info",
+                    f"Job no-op: {result.get('reason')}",
+                    {
+                        "validation_status": result.get("validation_status"),
+                        "validation_code": result.get("validation_code"),
+                    }
+                )
+                self.db_client.mark_job_succeeded(job_id, result)
+                return True
+
             vm_name = result.get("vmName") or job.get("targetVmId")
             snapshot_id = result.get("snapshotId")
             observation_source = result.get("observationSource", "worker_mutation")
@@ -213,6 +228,26 @@ class WorkerDaemon:
             self._log_job_event(job_id, "info", "Job completed successfully", result)
 
             return True
+
+        except JobValidationError as e:
+            logger.warning(f"Job {job_id} validation failed: {e}")
+            validation_result = e.validation_result
+
+            self._log_job_event(
+                job_id,
+                "warning" if validation_result.requires_cleanup else "error",
+                f"Job validation failed: {validation_result.reason}",
+                validation_result.to_dict()
+            )
+
+            # Mark job as failed with validation details
+            error_message = (
+                f"Validation failed ({validation_result.code.value if validation_result.code else 'UNKNOWN'}): "
+                f"{validation_result.reason}"
+            )
+            self.db_client.mark_job_failed(job_id, error_message, retriable=e.retriable)
+
+            return False
 
         except JobExecutionError as e:
             logger.error(f"Job {job_id} failed: {e}")
@@ -414,8 +449,8 @@ def main():  # pragma: no cover
 
         db_client = DatabaseClient(db_service_url, db_service_password)
 
-        # Create job executor
-        executor = JobExecutor(config.provisioner_cli_path, db_client)
+        # Create job executor with worker config for validation
+        executor = JobExecutor(config.provisioner_cli_path, db_client, worker_config=config)
 
         # Create and run worker daemon
         worker = WorkerDaemon(config, db_client, executor)

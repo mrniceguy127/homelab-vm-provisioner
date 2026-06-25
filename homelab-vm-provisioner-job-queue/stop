@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stop script for homelab-vm-provisioner-job-queue
 #
-# Usage: ./stop
+# Usage: ./stop [--docker]
 
 set -euo pipefail
 
@@ -16,7 +16,28 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
 fi
 
 # Defaults
-QUEUE_MODE="${QUEUE_MODE:-docker}"
+DOCKER_MODE=false
+
+# Parse arguments
+for arg in "$@"; do
+    case "$arg" in
+        --docker)
+            DOCKER_MODE=true
+            ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Stop RabbitMQ service."
+            echo ""
+            echo "Options:"
+            echo "  --docker    Stop RabbitMQ in Docker mode"
+            echo "  --help      Show this help message"
+            echo ""
+            echo "Default: Stop native RabbitMQ service"
+            exit 0
+            ;;
+    esac
+done
 
 log() {
     printf '==> %s\n' "$*"
@@ -34,9 +55,9 @@ docker_container_running() {
     [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || true)" == "true" ]]
 }
 
-log "Stopping RabbitMQ (mode: $QUEUE_MODE)"
+log "Stopping RabbitMQ (Docker mode: $DOCKER_MODE)"
 
-if [[ "$QUEUE_MODE" == "docker" ]]; then
+if [[ "$DOCKER_MODE" == "true" ]]; then
     CONTAINER_NAME="hlvmp-rabbitmq"
     
     if docker_container_running "$CONTAINER_NAME"; then
@@ -47,7 +68,8 @@ if [[ "$QUEUE_MODE" == "docker" ]]; then
         log "RabbitMQ container is not running"
     fi
     
-elif [[ "$QUEUE_MODE" == "non-docker" ]]; then
+else
+    # Native mode
     if ! command -v rabbitmqctl >/dev/null 2>&1; then
         printf 'Error: RabbitMQ is not installed\n' >&2
         exit 1
@@ -63,8 +85,4 @@ elif [[ "$QUEUE_MODE" == "non-docker" ]]; then
         printf 'Stop RabbitMQ manually: sudo service rabbitmq-server stop\n' >&2
         exit 1
     fi
-    
-else
-    printf 'Error: Invalid QUEUE_MODE: %s\n' "$QUEUE_MODE" >&2
-    exit 1
 fi
