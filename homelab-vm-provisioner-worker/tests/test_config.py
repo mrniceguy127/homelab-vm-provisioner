@@ -16,12 +16,15 @@ class TestWorkerConfig(unittest.TestCase):
             config = WorkerConfig(
                 database_url="postgresql://localhost/test",
                 host_id="test-host",
-                api_url="http://localhost:3001",
+                api_host="localhost",
+                api_port=3001,
                 provisioner_cli_path="/usr/bin/vmctl",
             )
 
         self.assertEqual(config.database_url, "postgresql://localhost/test")
         self.assertEqual(config.host_id, "test-host")
+        self.assertEqual(config.api_host, "localhost")
+        self.assertEqual(config.api_port, 3001)
         self.assertEqual(config.api_url, "http://localhost:3001")
         self.assertIsNotNone(config.worker_id)
         self.assertEqual(config.concurrency, 1)
@@ -33,7 +36,8 @@ class TestWorkerConfig(unittest.TestCase):
             config = WorkerConfig(
                 database_url="postgresql://localhost/test",
                 host_id="test-host",
-                api_url="http://localhost:3001",
+                api_host="localhost",
+                api_port=3001,
                 worker_id="custom-worker",
                 concurrency=3,
                 provisioner_cli_path="/custom/path",
@@ -49,7 +53,8 @@ class TestWorkerConfig(unittest.TestCase):
             config = WorkerConfig(
                 database_url="postgresql://localhost/test",
                 host_id="test-host",
-                api_url="http://localhost:3001",
+                api_host="localhost",
+                api_port=3001,
                 concurrency=0,
                 provisioner_cli_path="/usr/bin/vmctl",
             )
@@ -61,7 +66,8 @@ class TestWorkerConfig(unittest.TestCase):
         {
             "DATABASE_URL": "postgresql://localhost/test",
             "HOST_ID": "env-host",
-            "API_URL": "http://localhost:3001",
+            "API_HOST": "localhost",
+            "API_PORT": "3001",
             "WORKER_QUEUE_HOST": "localhost",
             "WORKER_ID": "env-worker",
             "PROVISIONER_CONCURRENCY": "2",
@@ -75,6 +81,8 @@ class TestWorkerConfig(unittest.TestCase):
 
         self.assertEqual(config.database_url, "postgresql://localhost/test")
         self.assertEqual(config.host_id, "env-host")
+        self.assertEqual(config.api_host, "localhost")
+        self.assertEqual(config.api_port, 3001)
         self.assertEqual(config.api_url, "http://localhost:3001")
         self.assertEqual(config.worker_id, "env-worker")
         self.assertEqual(config.concurrency, 2)
@@ -85,7 +93,8 @@ class TestWorkerConfig(unittest.TestCase):
             "DB_SERVICE_URL": "http://localhost:3002",
             "DB_SERVICE_PASSWORD": "secret",
             "HOST_ID": "env-host",
-            "API_URL": "http://localhost:3001",
+            "API_HOST": "localhost",
+            "API_PORT": "3001",
             "WORKER_QUEUE_HOST": "localhost",
             "PROVISIONER_CLI_PATH": "/usr/bin/vmctl",
         },
@@ -124,19 +133,56 @@ class TestWorkerConfig(unittest.TestCase):
         },
         clear=True,
     )
-    def test_from_env_missing_api_url(self):
-        """Test that from_env raises ValueError when API_URL is missing."""
+    def test_from_env_missing_api_host(self):
+        """Test that from_env raises ValueError when API_HOST is missing."""
         with self.assertRaises(ValueError) as context:
             WorkerConfig.from_env()
 
-        self.assertIn("API_URL", str(context.exception))
+        self.assertIn("API_HOST", str(context.exception))
 
     @patch.dict(
         os.environ,
         {
             "HOST_ID": "test-host",
             "DB_SERVICE_URL": "http://localhost:3002",
-            "API_URL": "http://localhost:3001",
+            "API_HOST": "localhost",
+        },
+        clear=True,
+    )
+    def test_from_env_missing_api_port(self):
+        """Test that from_env raises ValueError when API_PORT is missing."""
+        with self.assertRaises(ValueError) as context:
+            WorkerConfig.from_env()
+
+        self.assertIn("API_PORT", str(context.exception))
+
+    @patch.dict(
+        os.environ,
+        {
+            "HOST_ID": "test-host",
+            "DB_SERVICE_URL": "http://localhost:3002",
+            "API_HOST": "localhost",
+            "API_PORT": "not-a-number",
+            "WORKER_QUEUE_HOST": "localhost",
+            "PROVISIONER_CLI_PATH": "/usr/bin/vmctl",
+        },
+        clear=True,
+    )
+    @patch("hlvmp_worker.config.Path.exists", return_value=True)
+    def test_from_env_invalid_api_port(self, mock_exists):
+        """Test that from_env raises ValueError when API_PORT is not a valid integer."""
+        with self.assertRaises(ValueError) as context:
+            WorkerConfig.from_env()
+
+        self.assertIn("API_PORT must be a valid integer", str(context.exception))
+
+    @patch.dict(
+        os.environ,
+        {
+            "HOST_ID": "test-host",
+            "DB_SERVICE_URL": "http://localhost:3002",
+            "API_HOST": "localhost",
+            "API_PORT": "3001",
         },
         clear=True,
     )
@@ -153,7 +199,8 @@ class TestWorkerConfig(unittest.TestCase):
             config = WorkerConfig(
                 database_url="postgresql://localhost/test",
                 host_id="test-host",
-                api_url="http://localhost:3001",
+                api_host="localhost",
+                api_port=3001,
                 worker_id="test-worker",
                 provisioner_cli_path="/test/path",
             )
@@ -163,7 +210,8 @@ class TestWorkerConfig(unittest.TestCase):
         self.assertIn("test-host", repr_str)
         self.assertIn("test-worker", repr_str)
         self.assertIn("concurrency=1", repr_str)
-        self.assertIn("api_url", repr_str)
+        self.assertIn("api_host", repr_str)
+        self.assertIn("api_port", repr_str)
         self.assertIn("provisioner_cli_path", repr_str)
 
 
