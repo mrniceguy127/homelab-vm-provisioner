@@ -174,7 +174,8 @@ WORKER_QUEUE_ROUTING_KEY=host.local
 WORKER_QUEUE_USER=worker_local
 WORKER_QUEUE_PASSWORD=change-me
 WORKER_HOST_ID=local
-API_URL=http://localhost:3001
+PROXY_API_HOST=http://localhost
+API_PORT=3001
 ```
 
 **Connection Construction:** All components build connections from component vars - NO URL-style vars required.
@@ -372,7 +373,7 @@ User: Poll GET /api/jobs/:id for status
    ```bash
    cd homelab-vm-provisioner-worker
    cp .env.example .env
-   # Edit .env: add WORKER_QUEUE_* and API_URL
+   # Edit .env: add WORKER_QUEUE_*, PROXY_API_HOST, and API_PORT
    ./start
    
    # Check logs for RabbitMQ connection
