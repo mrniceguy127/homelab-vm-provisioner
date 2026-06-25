@@ -308,7 +308,7 @@ class WorkerDaemon:
         Raises:
             requests.exceptions.RequestException: On API call failure
         """
-        url = f"{self.config.api_internal_url}{endpoint}"
+        url = f"{self.config.api_url}/internal{endpoint}"
         response = requests.request(method, url, json=json_data, timeout=30)
         response.raise_for_status()
         return response.json()

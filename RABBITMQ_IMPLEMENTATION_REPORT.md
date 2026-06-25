@@ -174,7 +174,7 @@ WORKER_QUEUE_ROUTING_KEY=host.local
 WORKER_QUEUE_USER=worker_local
 WORKER_QUEUE_PASSWORD=change-me
 WORKER_HOST_ID=local
-API_INTERNAL_URL=http://localhost:3001/internal
+API_URL=http://localhost:3001
 ```
 
 **Connection Construction:** All components build connections from component vars - NO URL-style vars required.
@@ -221,18 +221,18 @@ if os.environ.get('WORKER_QUEUE_HOST'):
             return False  # NACK without requeue
         
         # Mark running
-        requests.post(f"{API_INTERNAL_URL}/worker/jobs/{job_id}/start", 
+        requests.post(f"{self.config.api_url}/internal/worker/jobs/{job_id}/start", 
                      json={'worker_id': self.config.worker_id})
         
         # Execute job
-        job = requests.get(f"{API_INTERNAL_URL}/worker/jobs/{job_id}").json()
+        job = requests.get(f"{self.config.api_url}/internal/worker/jobs/{job_id}").json()
         try:
             result = self.executor.execute(job)
-            requests.post(f"{API_INTERNAL_URL}/worker/jobs/{job_id}/succeed",
+            requests.post(f"{self.config.api_url}/internal/worker/jobs/{job_id}/succeed",
                          json={'result': result})
             return True  # ACK
         except Exception as e:
-            requests.post(f"{API_INTERNAL_URL}/worker/jobs/{job_id}/fail",
+            requests.post(f"{self.config.api_url}/internal/worker/jobs/{job_id}/fail",
                          json={'error': str(e), 'retryable': False})
             return True  # ACK (durable failure recorded)
     
@@ -372,7 +372,7 @@ User: Poll GET /api/jobs/:id for status
    ```bash
    cd homelab-vm-provisioner-worker
    cp .env.example .env
-   # Edit .env: add WORKER_QUEUE_* and API_INTERNAL_URL
+   # Edit .env: add WORKER_QUEUE_* and API_URL
    ./start
    
    # Check logs for RabbitMQ connection

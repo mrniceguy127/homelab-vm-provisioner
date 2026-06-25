@@ -16,7 +16,7 @@ class WorkerConfig:
         self,
         database_url: str,
         host_id: str,
-        api_internal_url: str,
+        api_url: str,
         worker_id: Optional[str] = None,
         concurrency: int = 1,
         state_refresh_interval: float = 60.0,
@@ -29,7 +29,7 @@ class WorkerConfig:
         Args:
             database_url: PostgreSQL connection URL (deprecated, use db_service_url)
             host_id: Host identifier for job claiming
-            api_internal_url: API internal endpoint URL (required)
+            api_url: API base URL (required, e.g. http://localhost:3001)
             worker_id: Unique worker identifier (auto-generated if None)
             concurrency: Maximum number of concurrent jobs (default: 1)
             state_refresh_interval: Runtime-state refresh interval in seconds
@@ -39,7 +39,7 @@ class WorkerConfig:
         """
         self.database_url = database_url
         self.host_id = host_id
-        self.api_internal_url = api_internal_url
+        self.api_url = api_url
         self.worker_id = worker_id or self._generate_worker_id()
         self.concurrency = max(1, concurrency)
         self.state_refresh_interval = max(5.0, state_refresh_interval)
@@ -91,7 +91,7 @@ class WorkerConfig:
             DB_SERVICE_URL: Database microservice URL (preferred)
             DB_SERVICE_PASSWORD: Database microservice password
             HOST_ID: Host identifier for job claiming
-            API_INTERNAL_URL: API internal endpoint URL (required)
+            API_URL: API base URL (required, e.g. http://localhost:3001)
             WORKER_QUEUE_HOST: RabbitMQ host (required)
             WORKER_ID: Optional worker identifier (auto-generated if not set)
             PROVISIONER_CONCURRENCY: Max concurrent jobs (default: 1)
@@ -117,9 +117,9 @@ class WorkerConfig:
                 "Either DATABASE_URL or DB_SERVICE_URL environment variable is required"
             )
 
-        api_internal_url = os.environ.get("API_INTERNAL_URL", "")
-        if not api_internal_url:
-            raise ValueError("API_INTERNAL_URL environment variable is required")
+        api_url = os.environ.get("API_URL", "")
+        if not api_url:
+            raise ValueError("API_URL environment variable is required")
 
         # Validate RabbitMQ configuration is present
         rabbitmq_host = os.environ.get("WORKER_QUEUE_HOST", "")
@@ -137,7 +137,7 @@ class WorkerConfig:
         return cls(
             database_url=database_url,
             host_id=host_id,
-            api_internal_url=api_internal_url,
+            api_url=api_url,
             worker_id=worker_id,
             concurrency=concurrency,
             state_refresh_interval=state_refresh_interval,
@@ -152,6 +152,6 @@ class WorkerConfig:
             f"WorkerConfig(host_id={self.host_id!r}, "
             f"worker_id={self.worker_id!r}, concurrency={self.concurrency}, "
             f"state_refresh_interval={self.state_refresh_interval}, "
-            f"api_internal_url={self.api_internal_url!r}, "
+            f"api_url={self.api_url!r}, "
             f"provisioner_cli_path={self.provisioner_cli_path!r})"
         )
